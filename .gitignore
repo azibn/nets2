@@ -4,10 +4,11 @@
 models/
 models2/
 
+## stella stuff that i don't need
+docs/
+figures/
 
-
-
-
+## misc
 __pycache__
 */__pycache__
 */*/__pycache__
