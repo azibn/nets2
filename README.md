@@ -14,5 +14,5 @@ cd stella
 python setup.py install
 ```
 
-
+`env.yml` was tested with an Apple Silicon machine.
 
