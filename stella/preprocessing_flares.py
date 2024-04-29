@@ -95,7 +95,7 @@ class FlareDataSet(object):
 
 
     def load_files(self, id_keyword='TIC', ft_keyword='tpeak',
-                   time_offset=2457000.0):
+                   time_offset=0):
         """
         Loads in light curves from the assigned training set
         directory. Files must be formatted such that the ID 
@@ -125,7 +125,7 @@ class FlareDataSet(object):
         time_offset : float, optional 
              Time correction from flare catalog to light curve and is
              necessary when using Max Guenther's catalog. 
-             Default is 2457000.0
+             Default is 0
         """
 
         print("Reading in training set files.")
