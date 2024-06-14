@@ -23,7 +23,10 @@ def import_lightcurve(filepath,drop_bad_points=True,return_type='astropy',return
     meta = lc[0].header
     data = lc[1].data
     if drop_bad_points:
-        data = data[data['QUALITY'] == 0]
+        try:
+            data = data[data['QUALITY'] == 0]
+        except KeyError:
+            data = data[data['SAP_QUALITY'] == 0]
 
     return_types = ['astropy','pandas','pd']
     lc.close()

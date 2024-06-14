@@ -121,7 +121,7 @@ class ConvNN(object):
             model.add(tf.keras.layers.MaxPooling1D(pool_size=2))
             model.add(tf.keras.layers.Dropout(dropout))
             model.add(tf.keras.layers.Conv1D(filters=filter2, kernel_size=3, 
-                                             activation='relu', padding='same'))
+                                            activation='relu', padding='same'))
             model.add(tf.keras.layers.MaxPooling1D(pool_size=2))
             model.add(tf.keras.layers.Dropout(dropout))
             

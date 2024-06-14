@@ -3,7 +3,6 @@
 ## exocomet models
 data/
 models/
-models2/
 
 ## stella stuff that i don't need
 docs/
@@ -28,3 +27,7 @@ dist
 *.cppimporthash
 .rendered.*
 *.egg-info
+.idea/
+asu2.tsv
+binary_catalog_prsa.csv
+notebooks/.png
