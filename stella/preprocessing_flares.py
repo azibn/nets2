@@ -40,9 +40,11 @@ class FlareDataSet(object):
         training=0.80,
         validation=0.90,
         time_offset=0,
-        merge_datasets=True,
+        merge_datasets=False,
         other_datasets=None,
         other_datasets_labels=None,
+        catalog_subset = False,
+        num_subset = None
     ):
         """
         Loads in time, flux, flux error data. Reshapes
@@ -84,6 +86,11 @@ class FlareDataSet(object):
              If you have more than one dataset, you can combine them. Default is False.
         other_datasets: FlareDataSet, optional
              The datasets to merge into the current FlareDataSet.
+        catalog_subset: bool, optional
+             Can make use of using a subset of the catalog only. Default False (where then the 
+             whole catalog is used).
+        num_subset: int, optional
+             Number of rows of subset from the catalog you want to specify.
 
 
         """
@@ -103,21 +110,18 @@ class FlareDataSet(object):
         self.cadences = cadences
 
         self.frac_balance = frac_balance
-        self.load_files(time_offset=time_offset)
+        self.load_files(time_offset=time_offset,subset=catalog_subset,num_subset=num_subset)
 
         self.reformat_data()
+        
 
         if merge_datasets == True:
             self.merge(other_datasets, labels=other_datasets_labels)
 
-          #   misc = split_data(
-          #      self.labels2,
-          #      self.training_matrix2,
-          #      self.training_ids2,
-          #      self.training_peaks2,
-          #      training,
-          #      validation,
-          #   )
+        
+        self.original_labels = np.copy(self.labels)
+  
+
         misc = split_data(
             self.labels,
             self.training_matrix,
@@ -125,6 +129,7 @@ class FlareDataSet(object):
             self.training_peaks,
             training,
             validation,
+            self.original_labels
         )
 
         self.train_data = misc[0]
@@ -140,8 +145,13 @@ class FlareDataSet(object):
 
         self.test_ids = misc[8]
         self.test_tpeaks = misc[9]
+        
+        self.val_labels_ori = misc[10]
 
-    def load_files(self, id_keyword="TIC", ft_keyword="tpeak", time_offset=0):
+        
+
+
+    def load_files(self, id_keyword="TIC", ft_keyword="tpeak", time_offset=0,subset=False,num_subset=None):
         """
         Loads in light curves from the assigned training set
         directory. Files must be formatted such that the ID
@@ -172,6 +182,11 @@ class FlareDataSet(object):
              Time correction from flare catalog to light curve and is
              necessary when using Max Guenther's catalog.
              Default is 0
+        subset: bool, optional
+             Returns a specific amount of data from the catalog (shuffled).
+             Default is False, where the import consists of all the times in the catalog.
+        num_subset: int, optional
+             Specify a number of rows to call from the catalog.
         """
 
         print("Reading in training set files.")
@@ -180,7 +195,12 @@ class FlareDataSet(object):
 
         files = np.sort([i for i in files if i.endswith(".npy") and "sector" in i])
 
-        tics, time, flux, err, real, tpeaks = [], [], [], [], [], []
+        if num_subset is not None:
+            assert num_subset <= len(files), f"Subset size {num_subset} is larger than file count {len(files)}"
+            files = np.random.choice(files, size=num_subset, replace=False)
+
+
+        tics, time, flux, err, real, model, tpeaks = [], [], [], [], [], [], []
 
         for fn in files:
             data = np.load(os.path.join(self.fn_dir, fn), allow_pickle=True)
@@ -196,11 +216,14 @@ class FlareDataSet(object):
 
             try:
                 real.append(data[3])
+                model.append(data[4])
             except:
                 pass
 
+
             peaks = self.catalog[(self.catalog[id_keyword] == tic)][ft_keyword].data
-            #                            (self.catalog['sector'] == sector)][ft_keyword].data
+
+
             peaks = peaks - time_offset
             tpeaks.append(peaks)
 
@@ -209,6 +232,7 @@ class FlareDataSet(object):
         self.flux = np.array(flux, dtype=np.ndarray)
         self.flux_err = np.array(err, dtype=np.ndarray)
         self.real = np.array(real, dtype=np.ndarray)
+        self.model = np.array(model,dtype=np.ndarray)
         self.tpeaks = tpeaks  # in TBJD
 
     def reformat_data(self, random_seed=321):
@@ -248,7 +272,7 @@ class FlareDataSet(object):
 
             for peak in self.tpeaks[i]:
                 arg = np.where(
-                    (self.time[i] > (peak - 0.04)) & (self.time[i] < (peak + 0.04))
+                    (self.time[i] > (peak - 0.06)) & (self.time[i] < (peak + 0.06))
                 )[
                     0
                 ]  # expanded the peak to one hour (in days) rather than
@@ -260,13 +284,14 @@ class FlareDataSet(object):
                     closest = arg[np.argmin(np.abs(peak - self.time[i][arg]))]
                     start = int(closest - self.cadences / 2)
                     end = int(closest + self.cadences / 2)
-
-                    if start < 0:
-                        start = 0
-                        end = self.cadences
-                    if end > len(self.time[i]):
-                        start = start - (end - len(self.time[i]))
-                        end = len(self.time[i])
+                    
+                    ### THESE NEXT TWO STATEMENTS ARE ACTUALLY REDUNDANT BECAUSE OF THE LATER IF STATEMENT.
+                    # if start < 0:
+                    #     start = 0
+                    #     end = self.cadences
+                    # if end > len(self.time[i]):
+                    #     start = start - (end - len(self.time[i]))
+                    #     end = len(self.time[i])
                         # end = len(self.time[i])
                         # start = max(0, end - self.cadences)
 
@@ -323,6 +348,7 @@ class FlareDataSet(object):
         )
 
         self.labels = label
+        self.original_labels = np.copy(label)
         self.training_peaks = peaks
         self.training_ids = ids
         self.training_matrix = matrix
@@ -338,9 +364,9 @@ class FlareDataSet(object):
         ### READS IN DATASETS (IF MULTIPLE, THIS IS HANDLED TOO)
         for i, o in enumerate(other):
           if labels != 0:
-               o.labels[:] = labels[i]
-          else: 
-               o.labels[:] = 0
+               o.original_labels[:] = labels[i]
+          o.labels[:] = 0
+
      
 
           #   elif set_to_negative:
@@ -350,41 +376,16 @@ class FlareDataSet(object):
 
           self.training_matrix = np.concatenate([self.training_matrix, o.training_matrix])
           self.labels = np.concatenate([self.labels, o.labels])
+          self.original_labels = np.concatenate([self.original_labels,o.original_labels])
           self.training_ids = np.concatenate([self.training_ids, o.training_ids])
           self.training_peaks = np.concatenate([self.training_peaks, o.training_peaks])
-
-
-    def merge2(self, other):
-        """Merge another FlareDataSet instance into this one.
-
-        Parameters
-        ----------
-        other : FlareDataSet or list of FlareDataSet
-            The other FlareDataSet instance or list of instances to merge into this one.
-
-        Returns
-        -------
-        FlareDataSet
-            The merged FlareDataSet instance.
-        """
-        if isinstance(other, list):
-            for o in other:
-                if not isinstance(o, FlareDataSet):
-                    raise ValueError("All elements in the list must be instances of FlareDataSet")
-                o.labels[:] = 0
-
-            # Concatenate the attributes of all instances in the list
-            self.training_matrix = np.concatenate([self.training_matrix] + [o.training_matrix for o in other])
-            self.labels = np.concatenate([self.labels] + [o.labels for o in other])
-            self.training_ids = np.concatenate([self.training_ids] + [o.training_ids for o in other])
-            self.training_peaks = np.concatenate([self.training_peaks] + [o.training_peaks for o in other])
-        elif isinstance(other, FlareDataSet):
-            # Concatenate the attributes of the single instance
-            self.training_matrix = np.concatenate([self.training_matrix, other.training_matrix])
-            other.labels[:] = 0
-            self.labels = np.concatenate([self.labels, other.labels])
-            self.training_ids = np.concatenate([self.training_ids, other.training_ids])
-            self.training_peaks = np.concatenate([self.training_peaks, other.training_peaks])
-        else:
-            raise ValueError("Input must be an instance of FlareDataSet or a list of FlareDataSet instances")
+        
+          self.ids = np.concatenate([self.ids, o.ids])
+          self.time = np.concatenate([self.time, o.time], axis=0)
+          self.flux = np.concatenate([self.flux, o.flux], axis=0)
+          self.flux_err = np.concatenate([self.flux_err, o.flux_err], axis=0)
+          self.real = np.concatenate([self.real, o.real], axis=0)
+     
+          
+          ### NOTE: TPEAKS IS NOT CONCATENATED HERE.
 

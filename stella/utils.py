@@ -1,6 +1,8 @@
 import numpy as np
 from astropy import units as uni
 from scipy.interpolate import interp1d
+from sklearn.model_selection import train_test_split
+
 
 
 def flare_lightcurve(time, t0, amp, rise, fall, y=None):
@@ -258,9 +260,104 @@ def do_the_shuffle(training_matrix, labels, training_other, training_ids, frac_b
     return newtraining_ids, newtraining_matrix, newlabels, newtraining_other
 
 
-def split_data(labels, training_matrix, ids, other, training, validation):
+# def split_data(labels, training_matrix, ids, other, training, validation,original_labels=None):
+
+#     """
+#     Splits the data matrix into a training, validation, and testing set.
+
+#     Parameters
+#     ----------
+#     labels : np.array
+#          Array of labels for each data row.
+#     training_matrix : np.ndarray
+#          Array of training-validation-test data.
+#     ids : np.array
+#          Array of identifiers for the light curves.
+#     other : np.array
+#          Array of signals (for flares -- tpeak; for transits -- SNR).
+#     training : float
+#          How much of the data should be in the training set.
+#     validation : float
+#         How much of the data should be in the validation & test set.
+#     original_labels: np.array, optional
+#         Array of the original labels for each data row. Mainly used for merged datasets, 
+#         otherwise this is the same as labels.
+
+#     Returns
+#     -------
+#     x_train : np.ndarray
+#     y_train : np.narray
+#     x_val : np.ndarray
+#     y_val : np.narray
+#     val_ids : np.array
+#     val_other : np.array
+#     x_test : np.ndarray
+#     y_test : np.array
+#     test_ids : np.array
+#     test_other : np.array
+#     y_val_ori: np.narray
+#     """
+    
+#     data_tuples = list(zip(labels, training_matrix, ids, other, original_labels))
+#     np.random.shuffle(data_tuples)
+
+
+#     labels, training_matrix, ids, other, original_labels = zip(*data_tuples)
+
+#     labels = np.array(labels)
+#     training_matrix = np.array(training_matrix)
+#     ids = np.array(ids)
+#     other = np.array(other)
+#     original_labels = np.array(original_labels)
+#      # Shuffle the data
+# #     indices = np.arange(len(labels))
+# #     np.random.shuffle(indices)
+    
+# #     labels = labels[indices]
+# #     training_matrix = training_matrix[indices]
+# #     ids = ids[indices]
+# #     other = other[indices]
+
+#     train_cutoff = int(training * len(labels))
+
+#     val_cutoff = int(validation * len(labels))
+
+#     x_train = training_matrix[0:train_cutoff]
+#     y_train = labels[0:train_cutoff]
+#     print("unique labels:",np.unique(y_train))
+
+#     x_val = training_matrix[train_cutoff:val_cutoff]
+#     y_val = labels[train_cutoff:val_cutoff]
+#     y_val_ori = original_labels[train_cutoff:val_cutoff]
+#     x_test = training_matrix[val_cutoff:]
+#     y_test = labels[val_cutoff:]
+#     x_train = x_train.reshape(x_train.shape[0], x_train.shape[1], 1)
+#     x_val = x_val.reshape(x_val.shape[0], x_train.shape[1], 1)
+#     x_test = x_test.reshape(x_test.shape[0], x_test.shape[1], 1)
+
+#     test_ids = ids[val_cutoff:]
+#     test_other = other[val_cutoff:]
+
+#     val_ids = ids[train_cutoff:val_cutoff]
+#     val_other = other[train_cutoff:val_cutoff]
+
+#     return (
+#         x_train,
+#         y_train,
+#         x_val,
+#         y_val,
+#         val_ids,
+#         val_other,
+#         x_test,
+#         y_test,
+#         test_ids,
+#         test_other,
+#         y_val_ori
+#     )
+
+def split_data(labels, training_matrix, ids, other, training_ratio, validation_ratio, original_labels=None):
     """
-    Splits the data matrix into a training, validation, and testing set.
+    Splits the data matrix into a training, validation, and testing set using stratified sampling.
 
     Parameters
     ----------
@@ -272,10 +369,14 @@ def split_data(labels, training_matrix, ids, other, training, validation):
          Array of identifiers for the light curves.
     other : np.array
          Array of signals (for flares -- tpeak; for transits -- SNR).
-    training : float
-         How much of the data should be in the training set.
-    validation : float
-        How much of the data should be in the validation & test set.
+    training_ratio : float
+         The ratio of data to be included in the training set.
+    validation_ratio : float
+         The ratio of data to be included in the validation set.
+         The remaining data will be used for the test set.
+    original_labels: np.array, optional
+        Array of the original labels for each data row. Mainly used for merged datasets,
+        otherwise this is the same as labels.
 
     Returns
     -------
@@ -289,53 +390,45 @@ def split_data(labels, training_matrix, ids, other, training, validation):
     y_test : np.array
     test_ids : np.array
     test_other : np.array
+    y_val_ori: np.narray
     """
 
-#     assert 0 < training <= 1, "Training proportion must be between 0 and 1"
-#     assert 0 < validation <= 1, "Validation proportion must be between 0 and 1"
-#     assert training + validation <= 1, "Training + Validation proportions must be less than 1"
+    # Combine data into tuples and shuffle
+    data_tuples = list(zip(labels, training_matrix, ids, other, original_labels))
+    np.random.shuffle(data_tuples)
+    labels, training_matrix, ids, other, original_labels = zip(*data_tuples)
 
+    # Convert arrays back to NumPy arrays
+    labels = np.array(labels)
+    training_matrix = np.array(training_matrix)
+    ids = np.array(ids)
+    other = np.array(other)
+    original_labels = np.array(original_labels)
 
-     # Shuffle the data
-    indices = np.arange(len(labels))
-    np.random.shuffle(indices)
-    
-    labels = labels[indices]
-    training_matrix = training_matrix[indices]
-    ids = ids[indices]
-    other = other[indices]
+    # Split data into training and temporary validation sets using stratified sampling
+    x_train, x_temp, y_train, y_temp = train_test_split(training_matrix, labels, stratify=labels, train_size=training_ratio, random_state=42)
 
-    train_cutoff = int(training * len(labels))
+    # Split temporary validation set into validation and test sets using stratified sampling
+    x_val, x_test, y_val, y_test = train_test_split(x_temp, y_temp, stratify=y_temp, test_size=(1 - validation_ratio), random_state=42)
 
-    val_cutoff = int(validation * len(labels))
-
-    x_train = training_matrix[0:train_cutoff]
-    y_train = labels[0:train_cutoff]
-    print("unique labels:",np.unique(y_train))
-
-    x_val = training_matrix[train_cutoff:val_cutoff]
-    y_val = labels[train_cutoff:val_cutoff]
-    x_test = training_matrix[val_cutoff:]
-    y_test = labels[val_cutoff:]
+    # Reshape data matrices
     x_train = x_train.reshape(x_train.shape[0], x_train.shape[1], 1)
-    x_val = x_val.reshape(x_val.shape[0], x_train.shape[1], 1)
+    x_val = x_val.reshape(x_val.shape[0], x_val.shape[1], 1)
     x_test = x_test.reshape(x_test.shape[0], x_test.shape[1], 1)
 
-    test_ids = ids[val_cutoff:]
-    test_other = other[val_cutoff:]
+    # Split additional data (ids, other, original_labels) based on the split indices
+    train_indices = np.arange(len(y_train))
+    val_indices = np.arange(len(y_train), len(y_train) + len(y_val))
+    test_indices = np.arange(len(y_train) + len(y_val), len(labels))
 
-    val_ids = ids[train_cutoff:val_cutoff]
-    val_other = other[train_cutoff:val_cutoff]
+    train_ids = ids[train_indices]
+    val_ids = ids[val_indices]
+    test_ids = ids[test_indices]
 
-    return (
-        x_train,
-        y_train,
-        x_val,
-        y_val,
-        val_ids,
-        val_other,
-        x_test,
-        y_test,
-        test_ids,
-        test_other,
-    )
+    train_other = other[train_indices]
+    val_other = other[val_indices]
+    test_other = other[test_indices]
+
+    y_val_ori = original_labels[val_indices]
+
+    return x_train, y_train, x_val, y_val, val_ids, val_other, x_test, y_test, test_ids, test_other, y_val_ori

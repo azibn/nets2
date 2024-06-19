@@ -221,9 +221,9 @@ class ConvNN(object):
 
         # CREATES TABLES FOR SAVING DATA
         table = Table()
-        val_table  = Table([self.ds.val_ids, self.ds.val_labels, self.ds.val_tpeaks],
-                           names=['tic', 'gt', 'tpeak'])
-        test_table = Table([self.ds.test_ids, self.ds.test_labels, self.ds.test_tpeaks],
+        val_table  = Table([self.ds.val_ids, self.ds.val_labels, self.ds.val_tpeaks,self.ds.val_labels_ori],
+                           names=['tic', 'gt', 'tpeak','labels'])
+        test_table = Table([self.ds.test_ids, self.ds.test_labels, self.ds.test_tpeaks], ### NEED TO ADD ATTRIBUTE FOR TEST ORIGINAL LABELS
                            names=['tic', 'gt', 'tpeak'])
         
         
@@ -249,7 +249,7 @@ class ConvNN(object):
             # SAVES THE MODEL TO OUTPUT DIRECTORY
             self.model.save(os.path.join(self.output_dir, model_fmt))
 
-            # GETS PREDICTIONS FOR EACH VALIDATION SET LIGHT CURVE
+            # GETS PREDICTIONS FOR EACH LIGHTCURVE IN THE VALIDATION SET
             val_preds = self.model.predict(self.ds.val_data)
             val_preds = np.reshape(val_preds, len(val_preds))
             val_table.add_column(Column(val_preds, name='pred_s{0:04d}'.format(int(seed))))
@@ -265,6 +265,7 @@ class ConvNN(object):
         self.history_table = table
         self.val_pred_table = val_table
         self.test_pred_table = test_table
+        
 
         # SAVES TABLE IS SAVE IS TRUE
         if save is True:

@@ -63,8 +63,8 @@ class DownloadSets(object):
 
         Vizier.ROW_LIMIT = -1
 
-        catalog_list = Vizier.find_catalogs('TESS flares sectors')
-        catalogs = Vizier.get_catalogs(catalog_list.keys())
+        #catalog_list = Vizier.find_catalogs('J/AJ/159/60')
+        catalogs = Vizier.get_catalogs('J/AJ/159/60')
 
         self.flare_table = catalogs[1]
         self.flare_table.rename_column('_tab2_5', 'tpeak')
