@@ -5,6 +5,7 @@ from astropy.table import Table
 from scipy.interpolate import interp1d
 import re
 import inspect
+import random
 
 from .utils import break_rest, do_the_shuffle, split_data
 
@@ -38,13 +39,12 @@ class FlareDataSet(object):
         cadences=200,
         frac_balance=0.73,
         training=0.80,
-        validation=0.90,
-        time_offset=0,
+        validation=0.10,
+        time_offset=0,  # 2457000.0,
         merge_datasets=False,
         other_datasets=None,
         other_datasets_labels=None,
-        catalog_subset = False,
-        num_subset = None
+        num_subset=None,
     ):
         """
         Loads in time, flux, flux error data. Reshapes
@@ -76,7 +76,7 @@ class FlareDataSet(object):
              model. Default is 80%
         validation : float, optionl
              Assigns the percentage of validation and testing set
-             data for the model. Default is 90%.
+             data for the model. Default is 10%.
         time_offset: optional
              Time correction from flare catalog to light curve and is
              necessary when using Max Guenther's catalog.
@@ -86,11 +86,8 @@ class FlareDataSet(object):
              If you have more than one dataset, you can combine them. Default is False.
         other_datasets: FlareDataSet, optional
              The datasets to merge into the current FlareDataSet.
-        catalog_subset: bool, optional
-             Can make use of using a subset of the catalog only. Default False (where then the 
-             whole catalog is used).
         num_subset: int, optional
-             Number of rows of subset from the catalog you want to specify.
+             Select a subset of positive class data if you do not want to use the entire catalog.
 
 
         """
@@ -110,17 +107,14 @@ class FlareDataSet(object):
         self.cadences = cadences
 
         self.frac_balance = frac_balance
-        self.load_files(time_offset=time_offset,subset=catalog_subset,num_subset=num_subset)
+        self.num_subset = num_subset
+        self.load_files(time_offset=time_offset)
 
         self.reformat_data()
-        
+        self.original_labels = np.copy(self.labels)
 
         if merge_datasets == True:
             self.merge(other_datasets, labels=other_datasets_labels)
-
-        
-        self.original_labels = np.copy(self.labels)
-  
 
         misc = split_data(
             self.labels,
@@ -129,8 +123,22 @@ class FlareDataSet(object):
             self.training_peaks,
             training,
             validation,
-            self.original_labels
+            self.original_labels,
         )
+     
+
+        if self.num_subset:
+            subset_data = self.subsets(num_subset=self.num_subset)
+            for attr, value in subset_data.items():
+                setattr(self, attr, value)
+            misc = split_data(self.labels,
+            self.training_matrix,
+            self.training_ids,
+            self.training_peaks,
+            training,
+            validation,
+            self.original_labels,
+          )
 
         self.train_data = misc[0]
         self.train_labels = misc[1]
@@ -145,13 +153,16 @@ class FlareDataSet(object):
 
         self.test_ids = misc[8]
         self.test_tpeaks = misc[9]
-        
+
         self.val_labels_ori = misc[10]
 
-        
 
-
-    def load_files(self, id_keyword="TIC", ft_keyword="tpeak", time_offset=0,subset=False,num_subset=None):
+    def load_files(
+        self,
+        id_keyword="TIC",
+        ft_keyword="tpeak",
+        time_offset=0,
+    ):
         """
         Loads in light curves from the assigned training set
         directory. Files must be formatted such that the ID
@@ -195,11 +206,6 @@ class FlareDataSet(object):
 
         files = np.sort([i for i in files if i.endswith(".npy") and "sector" in i])
 
-        if num_subset is not None:
-            assert num_subset <= len(files), f"Subset size {num_subset} is larger than file count {len(files)}"
-            files = np.random.choice(files, size=num_subset, replace=False)
-
-
         tics, time, flux, err, real, model, tpeaks = [], [], [], [], [], [], []
 
         for fn in files:
@@ -220,9 +226,7 @@ class FlareDataSet(object):
             except:
                 pass
 
-
             peaks = self.catalog[(self.catalog[id_keyword] == tic)][ft_keyword].data
-
 
             peaks = peaks - time_offset
             tpeaks.append(peaks)
@@ -232,7 +236,7 @@ class FlareDataSet(object):
         self.flux = np.array(flux, dtype=np.ndarray)
         self.flux_err = np.array(err, dtype=np.ndarray)
         self.real = np.array(real, dtype=np.ndarray)
-        self.model = np.array(model,dtype=np.ndarray)
+        self.model = np.array(model, dtype=np.ndarray)
         self.tpeaks = tpeaks  # in TBJD
 
     def reformat_data(self, random_seed=321):
@@ -263,16 +267,16 @@ class FlareDataSet(object):
 
         x = 0
 
-        def print_range_around_index(arr, idx, window_size=20):
-            start_index = max(0, idx - window_size)
-            end_index = min(len(arr), idx + window_size + 1)
-            
+        #    def print_range_around_index(arr, idx, window_size=20):
+        #        start_index = max(0, idx - window_size)
+        #        end_index = min(len(arr), idx + window_size + 1)
+
         for i in tqdm(range(len(self.time))):
             flares = np.array([], dtype=int)
 
             for peak in self.tpeaks[i]:
                 arg = np.where(
-                    (self.time[i] > (peak - 0.06)) & (self.time[i] < (peak + 0.06))
+                    (self.time[i] > (peak - 0.04)) & (self.time[i] < (peak + 0.04))
                 )[
                     0
                 ]  # expanded the peak to one hour (in days) rather than
@@ -284,7 +288,7 @@ class FlareDataSet(object):
                     closest = arg[np.argmin(np.abs(peak - self.time[i][arg]))]
                     start = int(closest - self.cadences / 2)
                     end = int(closest + self.cadences / 2)
-                    
+
                     ### THESE NEXT TWO STATEMENTS ARE ACTUALLY REDUNDANT BECAUSE OF THE LATER IF STATEMENT.
                     # if start < 0:
                     #     start = 0
@@ -292,8 +296,8 @@ class FlareDataSet(object):
                     # if end > len(self.time[i]):
                     #     start = start - (end - len(self.time[i]))
                     #     end = len(self.time[i])
-                        # end = len(self.time[i])
-                        # start = max(0, end - self.cadences)
+                    # end = len(self.time[i])
+                    # start = max(0, end - self.cadences)
 
                     flare_region = np.arange(start, end, 1, dtype=int)
                     # print("flare region: ", flare_region)
@@ -367,25 +371,57 @@ class FlareDataSet(object):
                o.original_labels[:] = labels[i]
           o.labels[:] = 0
 
-     
-
           #   elif set_to_negative:
           #       o.labels[:] = 0
 
-            # Merge 'other' into 'self'
+          # Merge 'other' into 'self'
 
-          self.training_matrix = np.concatenate([self.training_matrix, o.training_matrix])
+          self.training_matrix = np.concatenate(
+               [self.training_matrix, o.training_matrix]
+          )
           self.labels = np.concatenate([self.labels, o.labels])
-          self.original_labels = np.concatenate([self.original_labels,o.original_labels])
+          self.original_labels = np.concatenate(
+               [self.original_labels, o.original_labels]
+          )
           self.training_ids = np.concatenate([self.training_ids, o.training_ids])
-          self.training_peaks = np.concatenate([self.training_peaks, o.training_peaks])
-        
+          self.training_peaks = np.concatenate(
+               [self.training_peaks, o.training_peaks]
+          )
+
           self.ids = np.concatenate([self.ids, o.ids])
           self.time = np.concatenate([self.time, o.time], axis=0)
           self.flux = np.concatenate([self.flux, o.flux], axis=0)
           self.flux_err = np.concatenate([self.flux_err, o.flux_err], axis=0)
           self.real = np.concatenate([self.real, o.real], axis=0)
-     
-          
-          ### NOTE: TPEAKS IS NOT CONCATENATED HERE.
 
+               ### NOTE: TPEAKS IS NOT CONCATENATED HERE.
+    
+
+    def subsets(self, num_subset):
+        """Returns subset of positive class"""
+
+        indices = np.where(self.labels == 1)[0]
+        print(len(indices))
+
+        if isinstance(num_subset, int):
+            if num_subset > len(indices):
+                raise ValueError(
+                    f"Requested {num_subset} positive class samples, but only {len(indices)} are available."
+                )
+
+            random_indices = random.sample(list(indices), num_subset)
+
+            attributes = [
+                "training_matrix",
+                "labels",
+                "original_labels",
+                "training_ids",
+                "training_peaks",
+            ]
+            for attr in attributes:
+               attr_len = len(getattr(self, attr))
+               print(f"Length of {attr}: {attr_len}")
+        return {
+            attribute: getattr(self, attribute)[random_indices]
+            for attribute in attributes
+        }

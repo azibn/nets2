@@ -4,6 +4,12 @@
 data/
 models/
 
+## folders
+plots*
+notebooks/*.png
+cnn-models-stable/
+*.png
+
 ## stella stuff that i don't need
 docs/
 figures/

@@ -94,11 +94,11 @@ class DownloadSets(object):
         npy_name = '{0:09d}_sector{1:02d}.npy'
 
         for i in tqdm(range(len(tics))):
+            ### CHANGED TO DOWNLOAD 30-MINUTE LC'S
             slc = search_lightcurve('TIC'+str(tics[i]),
-                                    mission='TESS',
-                                    exptime=120,
+                                    author='TESS-SPOC',
                                     sector=[1,2],
-                                    author='SPOC')
+                                    )
 
 
             if len(slc) > 0:

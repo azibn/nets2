@@ -4,7 +4,6 @@ from scipy.interpolate import interp1d
 from sklearn.model_selection import train_test_split
 
 
-
 def flare_lightcurve(time, t0, amp, rise, fall, y=None):
     """
     Generates a simple flare model with a Gaussian rise and an
@@ -260,6 +259,7 @@ def do_the_shuffle(training_matrix, labels, training_other, training_ids, frac_b
     return newtraining_ids, newtraining_matrix, newlabels, newtraining_other
 
 
+
 # def split_data(labels, training_matrix, ids, other, training, validation,original_labels=None):
 
 #     """
@@ -355,80 +355,48 @@ def do_the_shuffle(training_matrix, labels, training_other, training_ids, frac_b
 #         y_val_ori
 #     )
 
+from sklearn.model_selection import train_test_split
+import numpy as np
+
 def split_data(labels, training_matrix, ids, other, training_ratio, validation_ratio, original_labels=None):
-    """
-    Splits the data matrix into a training, validation, and testing set using stratified sampling.
+    if original_labels is None:
+        original_labels = np.copy(labels)
+    
+    # Ensure ratios are valid
+    if training_ratio + validation_ratio > 1:
+        raise ValueError("training_ratio + validation_ratio must be less than or equal to 1")
 
-    Parameters
-    ----------
-    labels : np.array
-         Array of labels for each data row.
-    training_matrix : np.ndarray
-         Array of training-validation-test data.
-    ids : np.array
-         Array of identifiers for the light curves.
-    other : np.array
-         Array of signals (for flares -- tpeak; for transits -- SNR).
-    training_ratio : float
-         The ratio of data to be included in the training set.
-    validation_ratio : float
-         The ratio of data to be included in the validation set.
-         The remaining data will be used for the test set.
-    original_labels: np.array, optional
-        Array of the original labels for each data row. Mainly used for merged datasets,
-        otherwise this is the same as labels.
+    # First split: training and temp (validation + test)
+    split_arrays = train_test_split(
+        training_matrix, labels, ids, other, original_labels,
+        train_size=training_ratio,
+        stratify=labels,
+        random_state=42
+    )
+    
+    x_train, x_temp, y_train, y_temp, ids_train, ids_temp, other_train, other_temp, ori_train, ori_temp = split_arrays
 
-    Returns
-    -------
-    x_train : np.ndarray
-    y_train : np.narray
-    x_val : np.ndarray
-    y_val : np.narray
-    val_ids : np.array
-    val_other : np.array
-    x_test : np.ndarray
-    y_test : np.array
-    test_ids : np.array
-    test_other : np.array
-    y_val_ori: np.narray
-    """
-
-    # Combine data into tuples and shuffle
-    data_tuples = list(zip(labels, training_matrix, ids, other, original_labels))
-    np.random.shuffle(data_tuples)
-    labels, training_matrix, ids, other, original_labels = zip(*data_tuples)
-
-    # Convert arrays back to NumPy arrays
-    labels = np.array(labels)
-    training_matrix = np.array(training_matrix)
-    ids = np.array(ids)
-    other = np.array(other)
-    original_labels = np.array(original_labels)
-
-    # Split data into training and temporary validation sets using stratified sampling
-    x_train, x_temp, y_train, y_temp = train_test_split(training_matrix, labels, stratify=labels, train_size=training_ratio, random_state=42)
-
-    # Split temporary validation set into validation and test sets using stratified sampling
-    x_val, x_test, y_val, y_test = train_test_split(x_temp, y_temp, stratify=y_temp, test_size=(1 - validation_ratio), random_state=42)
+    # Check if we need a test set
+    if np.isclose(training_ratio + validation_ratio, 1):
+        # No test set needed, x_temp becomes x_val
+        x_val, y_val, val_ids, val_other, y_val_ori = x_temp, y_temp, ids_temp, other_temp, ori_temp
+        x_test, y_test, test_ids, test_other = np.array([]), np.array([]), np.array([]), np.array([])
+    else:
+        # Second split: validation and test
+        val_ratio = validation_ratio / (1 - training_ratio)
+        split_arrays = train_test_split(
+            x_temp, y_temp, ids_temp, other_temp, ori_temp,
+            train_size=val_ratio,
+            stratify=y_temp,
+            random_state=42
+        )
+        
+        x_val, x_test, y_val, y_test, val_ids, test_ids, val_other, test_other, y_val_ori, y_test_ori = split_arrays
 
     # Reshape data matrices
     x_train = x_train.reshape(x_train.shape[0], x_train.shape[1], 1)
     x_val = x_val.reshape(x_val.shape[0], x_val.shape[1], 1)
-    x_test = x_test.reshape(x_test.shape[0], x_test.shape[1], 1)
-
-    # Split additional data (ids, other, original_labels) based on the split indices
-    train_indices = np.arange(len(y_train))
-    val_indices = np.arange(len(y_train), len(y_train) + len(y_val))
-    test_indices = np.arange(len(y_train) + len(y_val), len(labels))
-
-    train_ids = ids[train_indices]
-    val_ids = ids[val_indices]
-    test_ids = ids[test_indices]
-
-    train_other = other[train_indices]
-    val_other = other[val_indices]
-    test_other = other[test_indices]
-
-    y_val_ori = original_labels[val_indices]
+    if x_test.size > 0:
+        x_test = x_test.reshape(x_test.shape[0], x_test.shape[1], 1)
 
     return x_train, y_train, x_val, y_val, val_ids, val_other, x_test, y_test, test_ids, test_other, y_val_ori

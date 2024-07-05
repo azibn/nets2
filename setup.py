@@ -13,11 +13,11 @@ from version import __version__
 
 long_description = \
     """
-stella is a python package to identify and characterize flares in 
-TESS short-cadence data using a convolutional neural network. In its
-simplest form, stella takes an array of light curves and predicts where
-flares are using the models provided in Feinstein et al. submitted and 
-returns predictions. 
+nets2 is a twist on the `stella` package by Feinstein et al 2020 to identify 
+exocomet transits in photometric data from TESS, Kepler, and K2 using a 
+convolutional neutal networks. In its simplest form, stella takes an array of 
+light curves and predicts where flares are using the models provided in Feinstein et al. 
+submitted and returns predictions. 
 
 Read the documentation at https://adina.feinste.in/stella
 

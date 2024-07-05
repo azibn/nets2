@@ -18,6 +18,7 @@ stella/download_nn_set.py
 stella/mark_flares.py
 stella/metrics.py
 stella/neural_network.py
+stella/optimise.py
 stella/preprocessing_flares.py
 stella/rotations.py
 stella/utils.py
@@ -28,6 +29,7 @@ stella.egg-info/SOURCES.txt
 stella.egg-info/dependency_links.txt
 stella.egg-info/requires.txt
 stella.egg-info/top_level.txt
+stella/tests/test_mark_flares.py
 stella/tests/test_neural_network.py
 stella/tests/test_processing.py
 stella/tests/test_rotation.py
