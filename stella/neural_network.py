@@ -5,8 +5,13 @@ import tensorflow as tf
 from tensorflow import keras
 from scipy.interpolate import interp1d
 from astropy.table import Table, Column
+from sklearn.metrics import confusion_matrix, classification_report, roc_curve, auc
+import matplotlib.pyplot as plt
+import seaborn as sns
+from keras.utils import to_categorical
 
-__all__ = ['ConvNN']
+__all__ = ["ConvNN"]
+
 
 class ConvNN(object):
     """
@@ -14,10 +19,15 @@ class ConvNN(object):
     neural network.
     """
 
-    def __init__(self, output_dir, ds=None,
-                 layers=None, optimizer='adam',
-                 loss='binary_crossentropy', 
-                 metrics=None):
+    def __init__(
+        self,
+        output_dir,
+        ds=None,
+        layers=None,
+        optimizer="adam",
+        loss="binary_crossentropy",
+        metrics=None,
+    ):
         """
         Creates and trains a Tensorflow keras model
         with either layers that have been passed in
@@ -89,11 +99,10 @@ class ConvNN(object):
 
         self.output_dir = output_dir
 
-
     def create_model(self, seed):
         """
         Creates the Tensorflow keras model with appropriate layers.
-        
+
         Attributes
         ----------
         model : tensorflow.python.keras.engine.sequential.Sequential
@@ -111,50 +120,65 @@ class ConvNN(object):
         if self.layers is None:
             filter1 = 16
             filter2 = 64
-            dense   = 32
+            dense = 32
             dropout = 0.1
 
             # CONVOLUTIONAL LAYERS
-            model.add(tf.keras.layers.Conv1D(filters=filter1, kernel_size=7, 
-                                             activation='relu', padding='same', 
-                                             input_shape=(self.cadences, 1)))
+            model.add(
+                tf.keras.layers.Conv1D(
+                    filters=filter1,
+                    kernel_size=7,
+                    activation="relu",
+                    padding="same",
+                    input_shape=(self.cadences, 1),
+                )
+            )
             model.add(tf.keras.layers.MaxPooling1D(pool_size=2))
             model.add(tf.keras.layers.Dropout(dropout))
-            model.add(tf.keras.layers.Conv1D(filters=filter2, kernel_size=3, 
-                                             activation='relu', padding='same'))
+            model.add(
+                tf.keras.layers.Conv1D(
+                    filters=filter2, kernel_size=3, activation="relu", padding="same"
+                )
+            )
             model.add(tf.keras.layers.MaxPooling1D(pool_size=2))
             model.add(tf.keras.layers.Dropout(dropout))
-            
+
             # DENSE LAYERS AND SOFTMAX OUTPUT
             model.add(tf.keras.layers.Flatten())
-            model.add(tf.keras.layers.Dense(dense, activation='relu'))
+            model.add(tf.keras.layers.Dense(dense, activation="relu"))
             model.add(tf.keras.layers.Dropout(dropout))
-            model.add(tf.keras.layers.Dense(1, activation='sigmoid'))
-            
+            model.add(
+                tf.keras.layers.Dense(1, activation="sigmoid")
+            )  # this should be 1 when binary CNN
+
         else:
             for l in self.layers:
                 model.add(l)
-                
+
         # COMPILE MODEL AND SET OPTIMIZER, LOSS, METRICS
         if self.metrics is None:
-            model.compile(optimizer=self.optimizer,
-                          loss=self.loss,
-                          metrics=['accuracy', tf.keras.metrics.Precision(), 
-                                   tf.keras.metrics.Recall()])
+            model.compile(
+                optimizer=self.optimizer,
+                loss=self.loss,
+                metrics=[
+                    "accuracy",
+                    tf.keras.metrics.Precision(),
+                    tf.keras.metrics.Recall(),
+                ],
+            )
         else:
-            model.compile(optimizer=self.optimizer,
-                          loss=self.loss,
-                          metrics=self.metrics)
+            model.compile(
+                optimizer=self.optimizer, loss=self.loss, metrics=self.metrics
+            )
 
         self.model = model
 
         # PRINTS MODEL SUMMARY
         model.summary()
 
-
-    def load_model(self, modelname, mode='validation'):
+    def load_model(self, modelname, mode="validation"):
         """
-        Loads an already created model. 
+        Loads an already created model.
 
         Parameters
         ----------
@@ -163,23 +187,29 @@ class ConvNN(object):
         """
         model = keras.models.load_model(modelname)
         self.model = model
-        
-        if mode == 'test':
+
+        if mode == "test":
             pred = model.predict(self.ds.test_data)
-        elif mode == 'validation':
+        elif mode == "validation":
             pred = model.predict(self.ds.val_data)
         pred = np.reshape(pred, len(pred))
-        
-        ## Calculate metrics from here
-        return 
-        
 
-    def train_models(self, seeds=[2], epochs=350, batch_size=64, shuffle=False,
-                     pred_test=False, save=False):
+        ## Calculate metrics from here
+        return
+
+    def train_models(
+        self,
+        seeds=[2],
+        epochs=350,
+        batch_size=64,
+        shuffle=False,
+        pred_test=False,
+        save=False,
+    ):
         """
         Runs n number of models with given initial random seeds of
-        length n. Also saves each model run to a hidden ~/.stella 
-        directory. 
+        length n. Also saves each model run to a hidden ~/.stella
+        directory.
 
         Parameters
         ----------
@@ -214,53 +244,98 @@ class ConvNN(object):
              pred_test = True, or else it is an empty table.
         """
 
-        if type(seeds) == int or type(seeds) == float or type(seeds) == np.int64: 
+        if type(seeds) == int or type(seeds) == float or type(seeds) == np.int64:
             seeds = np.array([seeds])
 
         self.epochs = epochs
 
         # CREATES TABLES FOR SAVING DATA
         table = Table()
-        val_table  = Table([self.ds.val_ids, self.ds.val_labels, self.ds.val_tpeaks],
-                           names=['tic', 'gt', 'tpeak'])
-        test_table = Table([self.ds.test_ids, self.ds.test_labels, self.ds.test_tpeaks],
-                           names=['tic', 'gt', 'tpeak'])
-        
-        
+        val_table = Table(
+            [
+                self.ds.val_ids,
+                self.ds.val_labels,
+                self.ds.val_tpeaks,
+                self.ds.val_labels_ori,
+            ],
+            names=["tic", "gt", "tpeak", "labels"],
+        )
+        test_table = Table(
+            [
+                self.ds.test_ids,
+                self.ds.test_labels,
+                self.ds.test_tpeaks,
+            ],  ### NEED TO ADD ATTRIBUTE FOR TEST ORIGINAL LABELS
+            names=["tic", "gt", "tpeak"],
+        )
+
         for seed in seeds:
-            
-            fmt_tail = '_s{0:04d}_i{1:04d}_b{2}'.format(int(seed), int(epochs), self.frac_balance)
-            model_fmt = 'ensemble' + fmt_tail + '.h5'
+
+            fmt_tail = "_s{0:04d}_i{1:04d}_b{2}".format(
+                int(seed), int(epochs), self.frac_balance
+            )
+            model_fmt = "ensemble" + fmt_tail + ".h5"
 
             keras.backend.clear_session()
-            
+
             # CREATES MODEL BASED ON GIVEN RANDOM SEED
             self.create_model(seed)
-            self.history = self.model.fit(self.ds.train_data, self.ds.train_labels, 
-                                          epochs=epochs,
-                                          batch_size=batch_size, shuffle=shuffle,
-                                          validation_data=(self.ds.val_data, self.ds.val_labels))
+            self.history = self.model.fit(
+                self.ds.train_data,
+                self.ds.train_labels,
+                epochs=epochs,
+                batch_size=batch_size,
+                shuffle=shuffle,
+                validation_data=(self.ds.val_data, self.ds.val_labels),
+            )
 
             col_names = list(self.history.history.keys())
             for cn in col_names:
-                col = Column(self.history.history[cn], name=cn+'_s{0:04d}'.format(int(seed)))
+                col = Column(
+                    self.history.history[cn], name=cn + "_s{0:04d}".format(int(seed))
+                )
                 table.add_column(col)
 
             # SAVES THE MODEL TO OUTPUT DIRECTORY
             self.model.save(os.path.join(self.output_dir, model_fmt))
 
-            # GETS PREDICTIONS FOR EACH VALIDATION SET LIGHT CURVE
+            # GETS PREDICTIONS FOR EACH LIGHTCURVE IN THE VALIDATION SET
             val_preds = self.model.predict(self.ds.val_data)
             val_preds = np.reshape(val_preds, len(val_preds))
-            val_table.add_column(Column(val_preds, name='pred_s{0:04d}'.format(int(seed))))
-            
+            val_table.add_column(
+                Column(val_preds, name="pred_s{0:04d}".format(int(seed)))
+            )
+
+            class_names = ["Plain", "Exocomet", "Exoplanet", "Binary", "FBinary"]
+            cm, predictions = self.evaluate(
+                self.ds.val_data,
+                self.ds.val_labels_ori,
+                self.ds.val_labels,
+                class_names,
+                seed=seed,
+            )
+
+            cm2, predictions2, _ = self.evaluate2(
+                self.ds.val_data,
+                self.ds.val_labels_ori,
+                self.ds.val_labels,
+                class_names,
+                seed=seed,
+            )
+
+            # store results
+            self.confusion_matrix = cm
+            self.val_predictions = predictions
+            # self.val_pred_classes = val_pred_classes
 
             # GETS PREDICTIONS FOR EACH TEST SET LIGHT CURVE IF PRED_TEST IS TRUE
             if pred_test is True:
                 test_preds = self.model.predict(self.ds.test_data)
                 test_preds = np.reshape(test_preds, len(test_preds))
-                test_table.add_column(Column(test_preds, name='pred_s{0:04d}'.format(int(seed))))
-                
+                test_table.add_column(
+                    Column(test_preds, name="pred_s{0:04d}".format(int(seed)))
+                )
+
         # SETS TABLE ATTRIBUTES
         self.history_table = table
         self.val_pred_table = val_table
@@ -268,22 +343,35 @@ class ConvNN(object):
 
         # SAVES TABLE IS SAVE IS TRUE
         if save is True:
-            fmt_table = '_i{0:04d}_b{1}.txt'.format(int(epochs), self.frac_balance)
-            hist_fmt = 'ensemble_histories' + fmt_table
-            pred_fmt = 'ensemble_predval' + fmt_table
+            fmt_table = "_i{0:04d}_b{1}.txt".format(int(epochs), self.frac_balance)
+            hist_fmt = "ensemble_histories" + fmt_table
+            pred_fmt = "ensemble_predval" + fmt_table
 
-            table.write(os.path.join(self.output_dir, hist_fmt), format='ascii')
-            val_table.write(os.path.join(self.output_dir, pred_fmt), format='ascii',
-                            fast_writer=False)
+            table.write(os.path.join(self.output_dir, hist_fmt), format="ascii")
+            val_table.write(
+                os.path.join(self.output_dir, pred_fmt),
+                format="ascii",
+                fast_writer=False,
+            )
 
             if pred_test is True:
-                test_fmt = 'ensemble_predtest' + fmt_table
-                test_table.write(os.path.join(self.output_dir, test_fmt), format='ascii',
-                                 fast_writer=False)
+                test_fmt = "ensemble_predtest" + fmt_table
+                test_table.write(
+                    os.path.join(self.output_dir, test_fmt),
+                    format="ascii",
+                    fast_writer=False,
+                )
 
-
-    def cross_validation(self, seed=2, epochs=350, batch_size=64,
-                         n_splits=5, shuffle=False, pred_test=False, save=False):
+    def cross_validation(
+        self,
+        seed=2,
+        epochs=350,
+        batch_size=64,
+        n_splits=5,
+        shuffle=False,
+        pred_test=False,
+        save=False,
+    ):
         """
         Performs cross validation for a given number of K-folds.
         Reassigns the training and validation sets for each fold.
@@ -313,7 +401,7 @@ class ConvNN(object):
         crossval_predval : astropy.table.Table
              Table of predictions on the validation set from each fold.
         crossval_predtest : astropy.table.Table
-             Table of predictions on the test set from each fold. ONLY 
+             Table of predictions on the test set from each fold. ONLY
              EXISTS IF PRED_TEST IS TRUE.
         crossval_histories : astropy.table.Table
              Table of history values from the model run on each fold.
@@ -342,51 +430,62 @@ class ConvNN(object):
         i = 0
         for ti, vi in kf.split(y_trainval):
             # CREATES TRAINING AND VALIDATION SETS
-            x_train   = x_trainval[ti]
+            x_train = x_trainval[ti]
             y_train = y_trainval[ti]
-            x_val   = x_trainval[vi]
+            x_val = x_trainval[vi]
             y_val = y_trainval[vi]
 
             p_val = p_trainval[vi]
             t_val = t_trainval[vi]
-            
+
             # REFORMAT TO ADD ADDITIONAL CHANNEL TO DATA
             x_train = x_train.reshape(x_train.shape[0], x_train.shape[1], 1)
             x_val = x_val.reshape(x_val.shape[0], x_val.shape[1], 1)
-            
+
             # CREATES MODEL AND RUNS ON REFOLDED TRAINING AND VALIDATION SETS
             self.create_model(seed)
-            history = self.model.fit(x_train, y_train,
-                                     epochs=epochs,
-                                     batch_size=batch_size, shuffle=shuffle,
-                                     validation_data=(x_val, y_val))
+            history = self.model.fit(
+                x_train,
+                y_train,
+                epochs=epochs,
+                batch_size=batch_size,
+                shuffle=shuffle,
+                validation_data=(x_val, y_val),
+            )
 
             # SAVES THE MODEL BY DEFAULT
-            self.model.save(os.path.join(self.output_dir, 'crossval_s{0:04d}_i{1:04d}_b{2}_f{3:04d}.h5'.format(int(seed),
-                                                                                                               int(epochs),
-                                                                                                               self.frac_balance,
-                                                                                                               i)))
-            
+            self.model.save(
+                os.path.join(
+                    self.output_dir,
+                    "crossval_s{0:04d}_i{1:04d}_b{2}_f{3:04d}.h5".format(
+                        int(seed), int(epochs), self.frac_balance, i
+                    ),
+                )
+            )
 
             # CALCULATE METRICS FOR VALIDATION SET
             pred_val = self.model.predict(x_val)
             pred_val = np.reshape(pred_val, len(pred_val))
 
             # SAVES PREDS FOR VALIDATION SET
-            tab_names = ['id', 'gt', 'peak', 'pred']
+            tab_names = ["id", "gt", "peak", "pred"]
             data = [t_val, y_val, p_val, pred_val]
             for j, tn in enumerate(tab_names):
-                col = Column(data[j], name=tn+'_f{0:03d}'.format(i))
+                col = Column(data[j], name=tn + "_f{0:03d}".format(i))
                 predtab.add_column(col)
 
             # PREDICTS ON TEST SET IF PRED_TEST IS TRUE
             if pred_test is True:
                 preds = self.model.predict(self.ds.test_data)
                 preds = np.reshape(preds, len(preds))
-                data = [self.ds.test_ids, self.ds.test_labels, self.ds.test_tpeaks, 
-                        np.reshape(preds, len(preds))]
+                data = [
+                    self.ds.test_ids,
+                    self.ds.test_labels,
+                    self.ds.test_tpeaks,
+                    np.reshape(preds, len(preds)),
+                ]
                 for j, tn in enumerate(tab_names):
-                    col = Column(data[j], name=tn+'_f{0:03d}'.format(i))
+                    col = Column(data[j], name=tn + "_f{0:03d}".format(i))
                     pred_test_table.add_column(col)
                 self.crossval_predtest = pred_test_table
 
@@ -396,7 +495,7 @@ class ConvNN(object):
             # SAVES HISTORIES TO A TABLE
             col_names = list(history.history.keys())
             for cn in col_names:
-                col = Column(history.history[cn], name=cn+'_f{0:03d}'.format(i))
+                col = Column(history.history[cn], name=cn + "_f{0:03d}".format(i))
                 tab.add_column(col)
 
             # KEEPS TRACK OF WHICH FOLD
@@ -408,20 +507,36 @@ class ConvNN(object):
 
         # IF SAVE IS TRUE, SAVES TABLES TO OUTPUT DIRECTORY
         if save is True:
-            fmt = 'crossval_{0}_s{1:04d}_i{2:04d}_b{3}.txt'
-            predtab.write(os.path.join(self.output_dir, fmt.format('predval', int(seed),
-                                                                   int(epochs), self.frac_balance)), format='ascii',
-                          fast_writer=False)
-            tab.write(os.path.join(self.output_dir, fmt.format('histories', int(seed),
-                                                               int(epochs), self.frac_balance)), format='ascii',
-                      fast_writer=False)
+            fmt = "crossval_{0}_s{1:04d}_i{2:04d}_b{3}.txt"
+            predtab.write(
+                os.path.join(
+                    self.output_dir,
+                    fmt.format("predval", int(seed), int(epochs), self.frac_balance),
+                ),
+                format="ascii",
+                fast_writer=False,
+            )
+            tab.write(
+                os.path.join(
+                    self.output_dir,
+                    fmt.format("histories", int(seed), int(epochs), self.frac_balance),
+                ),
+                format="ascii",
+                fast_writer=False,
+            )
 
             # SAVES TEST SET PREDICTIONS IF TRUE
             if pred_test is True:
-                pred_test_table.write(os.path.join(self.output_dir, fmt.format('predtest', int(seed),
-                                                                               int(epochs), self.frac_balance)),
-                                      format='ascii', fast_writer=False)
-
+                pred_test_table.write(
+                    os.path.join(
+                        self.output_dir,
+                        fmt.format(
+                            "predtest", int(seed), int(epochs), self.frac_balance
+                        ),
+                    ),
+                    format="ascii",
+                    fast_writer=False,
+                )
 
     def calibration(self, df, metric_threshold):
         """
@@ -438,24 +553,24 @@ class ConvNN(object):
         """
         # ADD COLUMN TO TABLE THAT CALCULATES THE FRACTION OF MODELS
         # THAT SAY SOMETHING IS A FLARE
-        names= [i for i in df.colnames if 's' in i]
+        names = [i for i in df.colnames if "s" in i]
         flare_frac = np.zeros(len(df))
 
         for i, val in enumerate(len(df)):
             preds = np.array(list(df[names][i]))
             flare_frac[i] = len(preds[preds >= threshold]) / len(preds)
 
-        df.add_column(Column(flare_frac, name='flare_frac'))
-        
+        df.add_column(Column(flare_frac, name="flare_frac"))
+
         # !! WORK IN PROGRESS !!
 
         return df
-                       
-        
-    def predict(self, modelname, times, fluxes, errs, 
-                multi_models=False, injected=False):
+
+    def predict(
+        self, modelname, times, fluxes, errs, multi_models=False, injected=False
+    ):
         """
-        Takes in arrays of time and flux and predicts where the flares 
+        Takes in arrays of time and flux and predicts where the flares
         are based on the keras model created and trained.
 
         Parameters
@@ -471,7 +586,7 @@ class ConvNN(object):
         injected : bool, optional
              Returns predictions instead of setting attribute. Used
              for injection-recovery. Default is False.
-             
+
         Attributes
         ----------
         model : tensorflow.python.keras.engine.sequential.Sequential
@@ -489,7 +604,7 @@ class ConvNN(object):
         def identify_gaps(t):
             """
             Identifies which cadences can be predicted on given
-            locations of gaps in the data. Will always stay 
+            locations of gaps in the data. Will always stay
             cadences/2 away from the gaps.
 
             Returns lists of good indices to predict on.
@@ -500,18 +615,19 @@ class ConvNN(object):
             all_inds = np.arange(0, len(t), 1, dtype=int)
 
             # REMOVES BEGINNING AND ENDS
-            bad_inds = np.arange(0,cad_pad,1,dtype=int)
-            bad_inds = np.append(bad_inds, np.arange(len(t)-cad_pad,
-                                                     len(t), 1, dtype=int))
+            bad_inds = np.arange(0, cad_pad, 1, dtype=int)
+            bad_inds = np.append(
+                bad_inds, np.arange(len(t) - cad_pad, len(t), 1, dtype=int)
+            )
 
             diff = np.diff(t)
             med, std = np.nanmedian(diff), np.nanstd(diff)
-            
-            bad = np.where(np.abs(diff) >= med + 1.5*std)[0]
+
+            bad = np.where(np.abs(diff) >= med + 1.5 * std)[0]
             for b in bad:
-                bad_inds = np.append(bad_inds, np.arange(b-cad_pad,
-                                                         b+cad_pad,
-                                                         1, dtype=int))
+                bad_inds = np.append(
+                    bad_inds, np.arange(b - cad_pad, b + cad_pad, 1, dtype=int)
+                )
             bad_inds = np.sort(bad_inds)
             return np.delete(all_inds, bad_inds)
 
@@ -521,52 +637,183 @@ class ConvNN(object):
 
         # GETS REQUIRED INPUT SHAPE FROM MODEL
         cadences = model.input.shape[1]
-        cad_pad  = cadences/2
+        cad_pad = cadences / 2
 
         # REFORMATS FOR A SINGLE LIGHT CURVE PASSED IN
         try:
             times[0][0]
         except:
-            times  = [times]
+            times = [times]
             fluxes = [fluxes]
-            errs   = [errs]
-        
+            errs = [errs]
 
         predictions = []
         pred_t, pred_f, pred_e = [], [], []
-    
+
         for j in tqdm(range(len(times))):
             time = times[j] + 0.0
-            lc   = fluxes[j] / np.nanmedian(fluxes[j]) # MUST BE NORMALIZED
-            err  = errs[j] + 0.0
+            lc = fluxes[j] / np.nanmedian(fluxes[j])  # MUST BE NORMALIZED
+            err = errs[j] + 0.0
 
-            q = ( (np.isnan(time) == False) & (np.isnan(lc) == False))
+            q = (np.isnan(time) == False) & (np.isnan(lc) == False)
             time, lc, err = time[q], lc[q], err[q]
-            
+
             # APPENDS MASKED LIGHT CURVES TO KEEP TRACK OF
             pred_t.append(time)
             pred_f.append(lc)
             pred_e.append(err)
 
             good_inds = identify_gaps(time)
-                
+
             reshaped_data = np.zeros((len(lc), cadences))
 
             for i in good_inds:
-                loc = [int(i-cad_pad), int(i+cad_pad)]
-                f = lc[loc[0]:loc[1]]
-                t = time[loc[0]:loc[1]]                    
+                loc = [int(i - cad_pad), int(i + cad_pad)]
+                f = lc[loc[0] : loc[1]]
+                t = time[loc[0] : loc[1]]
                 reshaped_data[i] = f
-            
-            reshaped_data = reshaped_data.reshape(reshaped_data.shape[0], 
-                                                  reshaped_data.shape[1], 1)
-            
+
+            reshaped_data = reshaped_data.reshape(
+                reshaped_data.shape[0], reshaped_data.shape[1], 1
+            )
 
             preds = model.predict(reshaped_data)
             preds = np.reshape(preds, (len(preds),))
             predictions.append(preds)
-            
+
         self.predict_time = np.array(pred_t)
         self.predict_flux = np.array(pred_f)
-        self.predict_err  = np.array(pred_e)
-        self.predictions  = np.array(predictions)
+        self.predict_err = np.array(pred_e)
+        self.predictions = np.array(predictions)
+
+    def evaluate2(self, x_val, y_true, y_binary, class_names, seed):
+        print("Shape of x_val:", x_val.shape)
+        print("Shape of y_true:", y_true.shape)
+        print("Shape of y_binary:", y_binary.shape)
+
+        # Ensure y_true and y_binary are 1D
+        y_true = y_true.reshape(-1)
+        y_binary = y_binary.reshape(-1)
+
+        # Get predictions
+        y_pred_binary = self.model.predict(x_val)
+        print("Shape of y_pred_binary:", y_pred_binary.shape)
+
+        y_pred_binary_classes = (y_pred_binary > 0.5).astype(int).reshape(-1)
+        print("Shape of y_pred_binary_classes:", y_pred_binary_classes.shape)
+
+        # Convert binary predictions back to multi-class
+        y_pred_multi = np.zeros_like(y_true)
+        y_pred_multi[y_pred_binary_classes == 1] = 1  # Exocomets
+        y_pred_multi[y_pred_binary_classes == 0] = y_true[
+            y_pred_binary_classes == 0
+        ]  # Keep original labels for non-exocomets
+
+        print("Shape of y_pred_multi:", y_pred_multi.shape)
+
+        # Confusion Matrix
+        cm = confusion_matrix(y_true, y_pred_multi)
+        plt.figure(figsize=(10, 8))
+        sns.heatmap(
+            cm,
+            annot=True,
+            fmt="d",
+            cmap="Blues",
+            xticklabels=class_names,
+            yticklabels=class_names,
+        )
+        plt.xlabel("Predicted")
+        plt.ylabel("True")
+        plt.title("Multi-class Confusion Matrix")
+        plt.savefig(f"cm-multi-s{seed}.png", dpi=200)
+        plt.close()
+
+        # Classification Report
+        print(classification_report(y_true, y_pred_multi, target_names=class_names))
+
+        # Binary classification metrics
+        print("\nBinary Classification Metrics (Exocomets vs Non-Exocomets):")
+        print(
+            classification_report(
+                y_binary,
+                y_pred_binary_classes,
+                target_names=["Non-Exocomet", "Exocomet"],
+            )
+        )
+
+        return cm, y_pred_multi, y_pred_binary_classes
+
+    def evaluate(self, x_val, y_true, y_binary, class_names, seed):
+        """Making confusion matrix. Model predicts on the validation data.
+
+        Parameters
+        -----------
+        x_val: the data
+        y_true: the original labels
+        y_binary: the labels used for the CNN
+        class_names: the classes of things in the lightcurve
+        save_path: file path to save the evaluation results plot
+        """
+
+        y_pred_binary = self.model.predict(x_val)
+        y_pred_binary_classes = (y_pred_binary > 0.5).astype(int).reshape(-1)
+
+        # 2X2 CONFUSION MATRIX
+        cm_2x2 = confusion_matrix(y_binary, y_pred_binary_classes)
+
+        # CALCULATE METRICS
+        tn, fp, fn, tp = cm_2x2.ravel()
+        total_exocomets = tp + fn
+        total_non_exocomets = tn + fp
+
+        # Calculate class-specific metrics
+        class_metrics = {}
+        for i, class_name in enumerate(class_names):
+            if class_name == "Exocomet":
+                continue  # Skip Exocomet as it's handled separately
+            class_correct = np.sum((y_true == i) & (y_pred_binary_classes == 0))
+            class_total = np.sum(y_true == i)
+            class_metrics[class_name] = (class_correct, class_total)
+
+        # Prepare the results text
+        results_text = "2x2 Confusion Matrix:\n"
+        results_text += f"{cm_2x2}\n\n"
+        results_text += f"Exocomets correctly identified: {tp}/{total_exocomets} ({tp/total_exocomets:.2%})\n"
+        results_text += f"Non-exocomets correctly identified: {tn}/{total_non_exocomets} ({tn/total_non_exocomets:.2%})\n"
+        results_text += "\nBreakdown of correctly identified non-exocomets:\n"
+        for class_name, (correct, total) in class_metrics.items():
+            results_text += f"  {class_name}: {correct}/{total} ({correct/total:.2%})\n"
+
+        # Plotting the confusion matrix
+        plt.figure(figsize=(10, 12))
+
+        # Confusion Matrix Plot
+        plt.subplot(2, 1, 1)
+        sns.heatmap(
+            cm_2x2,
+            annot=True,
+            fmt="d",
+            cmap="Blues",
+            xticklabels=["Non-exocomet", "Exocomet"],
+            yticklabels=["Non-exocomet", "Exocomet"],
+        )
+        plt.xlabel("Predicted")
+        plt.ylabel("Actual")
+        plt.title("2x2 Confusion Matrix")
+
+        # Text Plot
+        plt.subplot(2, 1, 2)
+        plt.axis("off")
+        plt.text(
+            0,
+            0.5,
+            results_text,
+            fontsize=12,
+            verticalalignment="center",
+            family="monospace",
+        )
+        plt.tight_layout()
+        plt.savefig(f"evaluation-plots-{seed}.png", dpi=200)
+        plt.close()
+
+        return cm_2x2, y_pred_binary_classes

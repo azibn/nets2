@@ -63,8 +63,8 @@ class DownloadSets(object):
 
         Vizier.ROW_LIMIT = -1
 
-        catalog_list = Vizier.find_catalogs('TESS flares sectors')
-        catalogs = Vizier.get_catalogs(catalog_list.keys())
+        #catalog_list = Vizier.find_catalogs('J/AJ/159/60')
+        catalogs = Vizier.get_catalogs('J/AJ/159/60')
 
         self.flare_table = catalogs[1]
         self.flare_table.rename_column('_tab2_5', 'tpeak')
@@ -94,11 +94,11 @@ class DownloadSets(object):
         npy_name = '{0:09d}_sector{1:02d}.npy'
 
         for i in tqdm(range(len(tics))):
+            ### CHANGED TO DOWNLOAD 30-MINUTE LC'S
             slc = search_lightcurve('TIC'+str(tics[i]),
-                                    mission='TESS',
-                                    exptime=120,
+                                    author='TESS-SPOC',
                                     sector=[1,2],
-                                    author='SPOC')
+                                    )
 
 
             if len(slc) > 0:

@@ -1,3 +1,20 @@
+# nets2 
+
+## exocomet models
+data/
+models/
+
+## folders
+plots*
+notebooks/*.png
+cnn-models-stable/
+*.png
+
+## stella stuff that i don't need
+docs/
+figures/
+
+## misc
 __pycache__
 */__pycache__
 */*/__pycache__
@@ -16,3 +33,7 @@ dist
 *.cppimporthash
 .rendered.*
 *.egg-info
+.idea/
+asu2.tsv
+binary_catalog_prsa.csv
+notebooks/.png
