@@ -218,7 +218,7 @@ if __name__ == "__main__":
             if args.optimise:
                 print("Selected optimising hyperparameters...")
                 best_params = optimise.optimise_hyperparameters(
-                    cnn, n_trials=20
+                    cnn, n_trials=100
                 )  # You can adjust n_trials as needed
                 optimise.apply_best_params(cnn, best_params, seed=seed)
                 print("Optimisation complete. Best parameters:", best_params)

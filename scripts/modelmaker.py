@@ -374,28 +374,12 @@ def main():
     'binary': lambda target_ID: exoplanet(target_ID, binary=True)
     }
 
-    # Get the function for the selected model
     
-    model_function = model_functions.get(args.model)
-    
-    # if model_function is None:
-    #     raise ValueError(f"Unknown model: {args.model}")
-    #     return
-
     for target_ID in tqdm(files[0:args.number]):
         
         if args.model in model_functions:
             model_functions[args.model](target_ID)
 
-
-        # result = model_function(target_ID, files)
-        # if result:
-        #     results.append(result)
-        # else:
-        #     failed_iterations += 1
-
-    # print(f"Completed. Failed iterations: {failed_iterations}")
-    # return results
 
 
 if __name__ == "__main__":

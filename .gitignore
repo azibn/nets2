@@ -9,6 +9,7 @@ plots*
 notebooks/*.png
 cnn-models-stable/
 *.png
+exo*/
 
 ## stella stuff that i don't need
 docs/
