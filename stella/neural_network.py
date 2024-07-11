@@ -75,7 +75,7 @@ class ConvNN(object):
         """
         self.ds = ds
         self.layers = layers
-        self.optimizer = optimizer
+        self.optimizer = keras.optimizers.Adam(learning_rate=0.0001) #optimizer
         self.loss = loss
         self.metrics = metrics
 
@@ -677,7 +677,7 @@ class ConvNN(object):
                 reshaped_data.shape[0], reshaped_data.shape[1], 1
             )
 
-            preds = model.predict(reshaped_data)
+            preds = model.predict(reshaped_data,verbose=0)
             preds = np.reshape(preds, (len(preds),))
             predictions.append(preds)
 

@@ -91,7 +91,7 @@ def apply_best_params(cnn_instance, best_params, seed):
     cnn_instance.layers = [
         tf.keras.layers.Conv1D(
             filters=best_params["filter1"],
-            kernel_size=best_params["kernel_size1"],
+            kernel_size=7,
             activation="relu",
             padding="same",
             input_shape=(cnn_instance.cadences, 1),
@@ -100,7 +100,7 @@ def apply_best_params(cnn_instance, best_params, seed):
         tf.keras.layers.Dropout(best_params["dropout"]),
         tf.keras.layers.Conv1D(
             filters=best_params["filter2"],
-            kernel_size=best_params["kernel_size2"],
+            kernel_size=3,
             activation="relu",
             padding="same",
         ),
