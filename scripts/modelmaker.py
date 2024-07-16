@@ -272,7 +272,7 @@ def comet(
         ),
     )
 
-    return lc[lc_info]['TIC_ID'], injection_time, snr, lc['rms']
+    return lc['lc_info']['TIC_ID'], injection_time["t0"], snr, lc['rms']
 
 
 def exoplanet(
@@ -386,22 +386,27 @@ def main():
     }
 
     tic = []
-    time = []
-    for target_ID in tqdm(files[0 : args.number]):
-        try:
-            if args.model in model_functions:
-                tic_id, time = model_functions[args.model](target_ID)
-                tic.append(tic_id)
-                time.append(time)
-        except Exception as e:
-            failed_ids.append(target_ID)
-            continue
+    times = []
+    snr_cat = []
+    rms_cat = []
 
-    data = pd.DataFrame(data=[ticid,times,snr,rms_cat]).T
+    for target_ID in tqdm(files[0 : args.number]):
+        #try:
+        if args.model in model_functions:
+            tic_id, time, snr, rms = model_functions[args.model](target_ID)
+            tic.append(tic_id)
+            times.append(time)
+            snr_cat.append(snr)
+            rms_cat.append(rms)
+        #except Exception as e:
+        #    failed_ids.append(target_ID)
+        #    print(e)
+
+    data = pd.DataFrame(data=[tic,time,snr_cat,rms_cat]).T
     data.columns = ['TIC','tpeak','SNR','RMS']
     data.TIC = data.TIC.astype(int)
     t = Table.from_pandas(data)
-    t.write(f'{}', format='ascii', overwrite=True) 
+    t.write(f'{args.catalog}', format='ascii', overwrite=True) 
 
     print(f"{args.number - len(failed_ids)} exocomets created.")
     print(f"Failed iterations: {len(failed_ids)}")
