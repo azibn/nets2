@@ -18,6 +18,7 @@ import argparse
 import astropy.constants as const
 import time as ti
 import signal
+import pandas as pd
 
 sys.path.insert(1, "/Users/azib/Documents/open_source/nets2/stella/")
 sys.path.insert(1, "/Users/azib/Documents/open_source/nets2/scripts/")
@@ -33,6 +34,8 @@ parser.add_argument(
     dest="dir",
 )
 parser.add_argument("-f", "--folder", help="target output folder.", dest="folder")
+parser.add_argument("-c", "--catalog-name", help="target catalog file. Saved in a .txt format", dest="catalog")
+
 parser.add_argument("--number", default=5000, dest="number", type=int)
 
 parser.add_argument(
@@ -269,6 +272,8 @@ def comet(
         ),
     )
 
+    return lc[lc_info]['TIC_ID'], injection_time, snr, lc['rms']
+
 
 def exoplanet(
     file,
@@ -366,7 +371,7 @@ def exoplanet(
                 return None
             ti.sleep(retry_delay)
 
-    return None
+    return lc['lc_info']['TIC_ID'], injection_time["t0"], snr, lc['rms']
 
 
 def main():
@@ -380,13 +385,23 @@ def main():
         "binary": lambda target_ID: exoplanet(target_ID, binary=True),
     }
 
+    tic = []
+    time = []
     for target_ID in tqdm(files[0 : args.number]):
         try:
             if args.model in model_functions:
-                model_functions[args.model](target_ID)
+                tic_id, time = model_functions[args.model](target_ID)
+                tic.append(tic_id)
+                time.append(time)
         except Exception as e:
             failed_ids.append(target_ID)
             continue
+
+    data = pd.DataFrame(data=[ticid,times,snr,rms_cat]).T
+    data.columns = ['TIC','tpeak','SNR','RMS']
+    data.TIC = data.TIC.astype(int)
+    t = Table.from_pandas(data)
+    t.write(f'{}', format='ascii', overwrite=True) 
 
     print(f"{args.number - len(failed_ids)} exocomets created.")
     print(f"Failed iterations: {len(failed_ids)}")

@@ -13,27 +13,6 @@ Classifier: Operating System :: OS Independent
 Classifier: Programming Language :: Python :: 3.7
 Description-Content-Type: text/markdown
 License-File: LICENSE
-Requires-Dist: nbsphinx
-Requires-Dist: ipykernel
-Requires-Dist: tensorflow>=2.1.0
-Requires-Dist: astroquery
-Requires-Dist: astropy
-Requires-Dist: tqdm
-Requires-Dist: cython
-Requires-Dist: codecov
-Requires-Dist: coverage
-Requires-Dist: pytest
-Requires-Dist: pytest-cov
-Requires-Dist: lxml
-Requires-Dist: pybind11
-Requires-Dist: tornado
-Requires-Dist: matplotlib
-Requires-Dist: lightkurve>=2.0.0
-Requires-Dist: numpy
-Requires-Dist: scikit-learn
-Requires-Dist: more-itertools
-Requires-Dist: scipy!=1.4.1
-Requires-Dist: poetry
 
 
 nets2 is a twist on the `stella` package by Feinstein et al 2020 to identify 

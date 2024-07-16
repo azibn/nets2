@@ -62,6 +62,15 @@ def process_file(
     try:
         time, flux, errs, _ = np.load(file, allow_pickle=True)
         cnn.predict(modelname=modelname, times=time, fluxes=flux, errs=errs)
+        ### create function to save arrays
+        time = cnn.predict_time[0]
+        flux = cnn.predict_flux[0]
+        errs = cnn.predict_err[0]
+        predictions = cnn.predictions[0]
+
+        np.save(file,np.array([time,flux,errs,predictions]))
+
+
         closest_index = np.argmin(np.abs(np.array(cnn.predict_time) - 1500))
 
         ## time boundary conditions
