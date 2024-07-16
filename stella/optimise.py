@@ -8,7 +8,7 @@ def objective(trial, cnn_instance):
     filter2 = trial.suggest_int("filter2", 32, 128)
     dense = trial.suggest_int("dense", 16, 64)
     dropout = trial.suggest_float("dropout", 0.1, 0.5)
-    learning_rate = trial.suggest_float("learning_rate", 0.00001,0.01, log=True)
+    learning_rate = trial.suggest_float("learning_rate", 0.00001, 0.01, log=True)
 
     kernel_size1 = trial.suggest_int("kernel_size1", 3, 11, step=2)
     kernel_size2 = trial.suggest_int(
@@ -22,7 +22,7 @@ def objective(trial, cnn_instance):
         [
             tf.keras.layers.Conv1D(
                 filters=filter1,
-                kernel_size=7, #kernel_size1
+                kernel_size=7,  # kernel_size1
                 activation="relu",
                 padding="same",
                 input_shape=(cnn_instance.cadences, 1),
@@ -31,7 +31,7 @@ def objective(trial, cnn_instance):
             tf.keras.layers.Dropout(dropout),
             tf.keras.layers.Conv1D(
                 filters=filter2,
-                kernel_size=3, # kernel_size2
+                kernel_size=3,  # kernel_size2
                 activation="relu",
                 padding="same",
             ),
@@ -74,7 +74,9 @@ def optimise_hyperparameters(cnn_instance, n_trials=100):
         study_name="cnn_optimisation_v2",
         load_if_exists=True,
     )
-    study.optimize(lambda trial: objective(trial, cnn_instance), n_trials=n_trials,n_jobs=-1)
+    study.optimize(
+        lambda trial: objective(trial, cnn_instance), n_trials=n_trials, n_jobs=-1
+    )
 
     print("Best trial:")
     trial = study.best_trial

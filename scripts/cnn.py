@@ -73,7 +73,10 @@ parser.add_argument(
 
 parser.add_argument("--merge", nargs="+", help="Paths to additional datasets to merge")
 parser.add_argument(
-    "--merge_catalogs", nargs="+", help="Paths to catalogs for additional datasets", dest='merge_catalogs'
+    "--merge_catalogs",
+    nargs="+",
+    help="Paths to catalogs for additional datasets",
+    dest="merge_catalogs",
 )
 
 
@@ -82,7 +85,7 @@ def plot_metrics(cnn, seed):
     Plots the output metrics from the CNN model for a single seed.
     """
     # Create a custom colormap
-    custom_cmap = mcolors.ListedColormap(["yellow", "darkblue", "red","green"])
+    custom_cmap = mcolors.ListedColormap(["yellow", "darkblue", "red", "green"])
 
     _, axes = plt.subplots(2, 2, figsize=(18, 12))
     formatted_seed = f"{seed:04}"
@@ -189,11 +192,11 @@ if __name__ == "__main__":
         catalog=args.catalog,
         merge_datasets=True,
         other_datasets=datasets,
-        other_datasets_labels=[2,3,4],
+        other_datasets_labels=[2, 3, 4],
         cadences=args.c,
         training=args.training,
         validation=args.validation,
-        frac_balance=args.frac_balance, ### REMOVE ALL NEGATIVE CLASSES OF THE MERGING DATASETS
+        frac_balance=args.frac_balance,  ### REMOVE ALL NEGATIVE CLASSES OF THE MERGING DATASETS
     )
 
     cnn = stella.ConvNN(
@@ -209,7 +212,6 @@ if __name__ == "__main__":
     positive_val = len(np.where(dataset.val_labels == 1)[0])
     print("Positive classes in training set:", positive_train)
     print("Positive classes in validation set:", positive_val)
-
 
     decision = input("Proceed? ")
 

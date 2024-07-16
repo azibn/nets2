@@ -7,8 +7,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy.stats import skewnorm
-sys.path.insert(1,"/Users/azib/Documents/open_source/nets2/scripts")
-sys.path.insert(1,"/Users/azib/Documents/open_source/nets2/stella")
+
+sys.path.insert(1, "/Users/azib/Documents/open_source/nets2/scripts")
+sys.path.insert(1, "/Users/azib/Documents/open_source/nets2/stella")
 from utils import *
 
 parser = argparse.ArgumentParser(
@@ -80,28 +81,31 @@ def generate_models(n_models=args.n, save=args.s, save_path=args.sp):
     """
     models = []
     id = []
-    for i, (skewness, duration, _) in tqdm.tqdm(enumerate(itertools.product(skew, duration_range, range(n_models)))):
+    for i, (skewness, duration, _) in tqdm.tqdm(
+        enumerate(itertools.product(skew, duration_range, range(n_models)))
+    ):
         model = skewed_gaussian(time, alpha=skewness, t0=1500, sigma=duration, A=0.001)
         models.append(model)
-        
+
         if save:
             os.makedirs(save_path, exist_ok=True)
             path = os.path.join(save_path, f"exocomet_model_{i}.npy")
             np.save(path, model)
 
         id.append(i)
-    
+
     catalogtime = np.array()
-    df = create_catalog(id,)
-        
-    
+    df = create_catalog(
+        id,
+    )
 
     return models
 
-def create_catalog(id, time,catalog_name='catalog.txt'):
 
-    df = pd.DataFrame(data=[id,time],columns=['TIC','tpeak'])
-    df.to_csv(f"{catalog_name}",index=None)
+def create_catalog(id, time, catalog_name="catalog.txt"):
+
+    df = pd.DataFrame(data=[id, time], columns=["TIC", "tpeak"])
+    df.to_csv(f"{catalog_name}", index=None)
 
     return df
 
@@ -118,16 +122,23 @@ if __name__ == "__main__":
     duration_values = [comb[1] for comb in combinations]
 
     # Create a 2D histogram
-    hist, xedges, yedges = np.histogram2d(skew_values, duration_values, bins=[len(skew), len(duration_range)])
+    hist, xedges, yedges = np.histogram2d(
+        skew_values, duration_values, bins=[len(skew), len(duration_range)]
+    )
 
     # Plot the heatmap
     plt.figure(figsize=(8, 6))
-    plt.imshow(hist, interpolation='nearest', origin='lower', extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]])
-    plt.colorbar(label='Number of iterations')
-    plt.xlabel('Skewness')
-    plt.ylabel('Duration')
+    plt.imshow(
+        hist,
+        interpolation="nearest",
+        origin="lower",
+        extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]],
+    )
+    plt.colorbar(label="Number of iterations")
+    plt.xlabel("Skewness")
+    plt.ylabel("Duration")
     plt.grid(True)
-    plt.title('Number of iterations per skewness-duration combination')
+    plt.title("Number of iterations per skewness-duration combination")
     plt.show()
 
 

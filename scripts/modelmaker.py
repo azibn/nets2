@@ -32,10 +32,8 @@ parser.add_argument(
     help="The target directory of lightcurves to use for model injection.",
     dest="dir",
 )
-parser.add_argument(
-    "-f", "--folder", help="target output folder.", dest="folder"
-)
-parser.add_argument("--number", default=5000, dest="number",type=int)
+parser.add_argument("-f", "--folder", help="target output folder.", dest="folder")
+parser.add_argument("--number", default=5000, dest="number", type=int)
 
 parser.add_argument(
     "-m",
@@ -51,6 +49,7 @@ files = glob(f"{args.dir}/*.fits")
 random.shuffle(files)
 
 os.makedirs(args.folder, exist_ok=True)
+
 
 def calculate_timestep(table):
     """
@@ -221,7 +220,9 @@ def find_valid_injection_time(lc, window_size, max_attempts=100):
                 return {"t0": t0}
 
 
-def comet(file, folder=args.folder, min_snr=3, max_snr=20, window_size=84,max_retries=5):
+def comet(
+    file, folder=args.folder, min_snr=3, max_snr=20, window_size=84, max_retries=5
+):
     """
     Creates a comet profile and injects it into a lightcurve.
 
@@ -243,13 +244,12 @@ def comet(file, folder=args.folder, min_snr=3, max_snr=20, window_size=84,max_re
 
     retries = 0
     while retries < max_retries:
-            injection_time = find_valid_injection_time(lc, window_size)
-            if injection_time["t0"] is None:
-                retries += 1
-                continue
-            else:
-                break
-
+        injection_time = find_valid_injection_time(lc, window_size)
+        if injection_time["t0"] is None:
+            retries += 1
+            continue
+        else:
+            break
 
     model = 1 - models.comet_curve(lc["time"], snr["amplitude"], injection_time["t0"])
 
@@ -270,7 +270,6 @@ def comet(file, folder=args.folder, min_snr=3, max_snr=20, window_size=84,max_re
     )
 
 
-
 def exoplanet(
     file,
     min_snr=5,
@@ -285,7 +284,7 @@ def exoplanet(
     retry_delay=1,
     timeout_duration=30,
     binary=False,
-    folder=args.folder
+    folder=args.folder,
 ):
 
     lc = prepare_lightcurve(file)
@@ -325,7 +324,7 @@ def exoplanet(
             params.w = 90.0
             params.limb_dark = "linear"
             if binary:
-                params.u = [np.random.uniform(0.1,0.9)]
+                params.u = [np.random.uniform(0.1, 0.9)]
             else:
                 params.u = [np.random.uniform(0.2, 0.8)]
 
@@ -376,13 +375,12 @@ def main():
     failed_ids = []
     # Map model names to functions
     model_functions = {
-    'exocomet': comet,
-    'exoplanet': lambda target_ID: exoplanet(target_ID),
-    'binary': lambda target_ID: exoplanet(target_ID, binary=True)
+        "exocomet": comet,
+        "exoplanet": lambda target_ID: exoplanet(target_ID),
+        "binary": lambda target_ID: exoplanet(target_ID, binary=True),
     }
 
-    
-    for target_ID in tqdm(files[0:args.number]):
+    for target_ID in tqdm(files[0 : args.number]):
         try:
             if args.model in model_functions:
                 model_functions[args.model](target_ID)

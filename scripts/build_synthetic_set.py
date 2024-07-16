@@ -9,10 +9,11 @@ from astropy.table import Table
 
 
 ### some parameter space
-#depth = 10 ** np.random.uniform(-4, -1, 1)[0] # range from 0.0001 to 0.1
-#skewness = np.random.uniform(0, 30, 0.001)[0] # range from 0 to 30
+# depth = 10 ** np.random.uniform(-4, -1, 1)[0] # range from 0.0001 to 0.1
+# skewness = np.random.uniform(0, 30, 0.001)[0] # range from 0 to 30
 
-def gauss(t,A,t0,sigma):
+
+def gauss(t, A, t0, sigma):
     """
     Creates a Gaussian function.
 
@@ -24,16 +25,16 @@ def gauss(t,A,t0,sigma):
 
     Returns:
         float or array: Value of the Gaussian function at the given time(s).
-        
-        
+
+
     Notes:
-        To maintain asymmetry in the exocomet direction, always have sigma tail > sigma.    
-        """
+        To maintain asymmetry in the exocomet direction, always have sigma tail > sigma.
+    """
 
-    return abs(A)*np.exp( -(t - t0)**2 / (2 * sigma**2) )
+    return abs(A) * np.exp(-((t - t0) ** 2) / (2 * sigma**2))
 
 
-def comet_curve(t,A,t0,sigma=3.28541476e-01,tail=3.40346173e-01):
+def comet_curve(t, A, t0, sigma=3.28541476e-01, tail=3.40346173e-01):
     ### add the Beta Pic parameters
     """
     Creates an exocomets light curve model.
@@ -54,52 +55,56 @@ def comet_curve(t,A,t0,sigma=3.28541476e-01,tail=3.40346173e-01):
     x = np.zeros(len(t))
     for i in range(len(t)):
         if t[i] < t0:
-            x[i] = gauss(t[i],A,t0,sigma)
+            x[i] = gauss(t[i], A, t0, sigma)
         else:
-            x[i] = A*math.exp(-abs(t[i]-t0)/tail)
-                
+            x[i] = A * math.exp(-abs(t[i] - t0) / tail)
+
     return x
 
-def comet_curve_fit(x,y):
+
+def comet_curve_fit(x, y):
     """Fits the exocomet light curve model to the data."""
     # Initial parameters guess
     # x = time
     # y = flux
     i = np.argmax(y)
 
-    width = x[-1]-x[0]
+    width = x[-1] - x[0]
 
-    params_init = [y[i],x[i],width/3,width/3]
+    params_init = [y[i], x[i], width / 3, width / 3]
 
-    params_bounds = [[0,x[0],0,0], [np.inf,x[-1],width/2,width/2]]
-    params,cov = curve_fit(comet_curve,x,y,params_init,bounds=params_bounds)
+    params_bounds = [[0, x[0], 0, 0], [np.inf, x[-1], width / 2, width / 2]]
+    params, cov = curve_fit(comet_curve, x, y, params_init, bounds=params_bounds)
     return params, cov
 
+
 def create_transit_model(time, depth, t0, sigma=3.02715600e-01, tail=3.40346173e-01):
-    """Creates an exocomet light curve model. This does not return the flux, 
+    """Creates an exocomet light curve model. This does not return the flux,
     you will have to multiply by the flux of your original lightcurve."""
     return 1 - comet_curve(time, depth, t0, sigma, tail)
 
-def inject_lightcurve(table, time=None,depth=None):
+
+def inject_lightcurve(table, time=None, depth=None):
     """Injects the exocomet light curve model into the light curve.
-    
+
     Inputs:
     - file: the light curve filepath
     - time: the time array of the light curve. If None, a random time is calculated.
     - depth: the depth of the transit. If None, a random depth between 0.1% and 0.0001% is calculated.
-    
+
     """
-    time = lc['TIME']
- 
+    time = lc["TIME"]
+
     if time is not None:
         depth = 10 ** np.random.uniform(-4, -2, 1)[0]
         t0 = np.random.uniform(time[0], time[-1])
 
-    lc['INJFLUX'] = create_transit_model(time, depth, t0)
+    lc["INJFLUX"] = create_transit_model(time, depth, t0)
 
     return lc
 
-def save_lightcurve(data, lc_info, format='fits'):
+
+def save_lightcurve(data, lc_info, format="fits"):
     """
     Saves lightcurve as either a FITS file or a NumPy array in .npz format based on the specified format.
 
@@ -125,7 +130,7 @@ def save_lightcurve(data, lc_info, format='fits'):
     #         for col in data.dtype.names:
     #             # Extract the column corresponding to the current field
     #             column_data = data[col]
-                
+
     #             # Add the column data to the dictionary with the field name as the key
     #             column_dict[col] = column_data
 
