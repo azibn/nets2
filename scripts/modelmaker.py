@@ -391,16 +391,15 @@ def main():
     rms_cat = []
 
     for target_ID in tqdm(files[0 : args.number]):
-        #try:
-        if args.model in model_functions:
-            tic_id, time, snr, rms = model_functions[args.model](target_ID)
-            tic.append(tic_id)
-            times.append(time)
-            snr_cat.append(snr)
-            rms_cat.append(rms)
-        #except Exception as e:
-        #    failed_ids.append(target_ID)
-        #    print(e)
+        try:
+            if args.model in model_functions:
+                tic_id, time, snr, rms = model_functions[args.model](target_ID)
+                tic.append(tic_id)
+                times.append(time)
+                snr_cat.append(snr)
+                rms_cat.append(rms)
+        except Exception as e:
+            failed_ids.append(target_ID)
 
     data = pd.DataFrame(data=[tic,time,snr_cat,rms_cat]).T
     data.columns = ['TIC','tpeak','SNR','RMS']
