@@ -408,8 +408,8 @@ def main():
     t.write(f'{args.catalog}', format='ascii', overwrite=True) 
 
 
-    # if len(failed_ids) > 0 :
-    #     print(f"Failed IDs: {len(failed_ids)}")
+    if len(failed_ids) > 0 :
+        print(f"Failed IDs: {len(failed_ids)}")
 
 
 
