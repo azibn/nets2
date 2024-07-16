@@ -244,17 +244,17 @@ def do_the_shuffle(training_matrix, labels, training_other, training_ids, frac_b
 
     ind_pc = np.where(newlabels == 1)
     ind_nc = np.where(newlabels != 1)
-    print("{} positive classes".format(len(ind_pc[0])))
-    print("{} negative classes".format(len(ind_nc[0])))
-    try:
-        print(
-            "{}% class imbalance\n".format(
-                np.round(100 * len(ind_pc[0]) / len(ind_nc[0]))
-            )
-        )
-    except ZeroDivisionError:
-        print("Division by zero error. Cannot calculate class imbalance.")
-        pass
+    # print("{} positive classes".format(len(ind_pc[0])))
+    # print("{} negative classes".format(len(ind_nc[0])))
+    # try:
+    #     print(
+    #         "{}% class imbalance\n".format(
+    #             np.round(100 * len(ind_pc[0]) / len(ind_nc[0]))
+    #         )
+    #     )
+    # except ZeroDivisionError:
+    #     print("Division by zero error. Cannot calculate class imbalance.")
+    #     pass
 
     return newtraining_ids, newtraining_matrix, newlabels, newtraining_other
 
@@ -374,7 +374,7 @@ def split_data(labels, training_matrix, ids, other, training_ratio, validation_r
         random_state=42
     )
     
-    x_train, x_temp, y_train, y_temp, ids_train, ids_temp, other_train, other_temp, ori_train, ori_temp = split_arrays
+    x_train, x_temp, y_train, y_temp, ids_train, ids_temp, other_train, other_temp, y_train_ori, ori_temp = split_arrays
 
     # Check if we need a test set
     if np.isclose(training_ratio + validation_ratio, 1):
@@ -399,4 +399,4 @@ def split_data(labels, training_matrix, ids, other, training_ratio, validation_r
     if x_test.size > 0:
         x_test = x_test.reshape(x_test.shape[0], x_test.shape[1], 1)
 
-    return x_train, y_train, x_val, y_val, val_ids, val_other, x_test, y_test, test_ids, test_other, y_val_ori
+    return x_train, y_train, x_val, y_val, val_ids, val_other, x_test, y_test, test_ids, test_other, y_train_ori, y_val_ori, y_test_ori

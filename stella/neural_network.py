@@ -75,7 +75,7 @@ class ConvNN(object):
         """
         self.ds = ds
         self.layers = layers
-        self.optimizer = keras.optimizers.Adam(learning_rate=0.0001) #optimizer
+        self.optimizer = optimizer #keras.optimizers.Adam(learning_rate=0.0001) 
         self.loss = loss
         self.metrics = metrics
 
@@ -696,7 +696,7 @@ class ConvNN(object):
         y_binary = y_binary.reshape(-1)
 
         # Get predictions
-        y_pred_binary = self.model.predict(x_val)
+        y_pred_binary = self.model.predict(x_val,verbose=0)
         print("Shape of y_pred_binary:", y_pred_binary.shape)
 
         y_pred_binary_classes = (y_pred_binary > 0.5).astype(int).reshape(-1)
@@ -755,7 +755,7 @@ class ConvNN(object):
         save_path: file path to save the evaluation results plot
         """
 
-        y_pred_binary = self.model.predict(x_val)
+        y_pred_binary = self.model.predict(x_val,verbose=0)
         y_pred_binary_classes = (y_pred_binary > 0.5).astype(int).reshape(-1)
 
         # 2X2 CONFUSION MATRIX

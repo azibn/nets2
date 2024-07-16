@@ -221,7 +221,7 @@ def find_valid_injection_time(lc, window_size, max_attempts=100):
                 return {"t0": t0}
 
 
-def comet(file, folder=args.folder, min_snr=3, max_snr=20, window_size=84):
+def comet(file, folder=args.folder, min_snr=3, max_snr=20, window_size=84,max_retries=5):
     """
     Creates a comet profile and injects it into a lightcurve.
 
@@ -240,8 +240,16 @@ def comet(file, folder=args.folder, min_snr=3, max_snr=20, window_size=84):
     snr = SNR(lc["rms"], min_snr, max_snr)
 
     injection_time = find_valid_injection_time(lc, window_size)
-    if injection_time["t0"] is None:
-        return None
+
+    retries = 0
+    while retries < max_retries:
+            injection_time = find_valid_injection_time(lc, window_size)
+            if injection_time["t0"] is None:
+                retries += 1
+                continue
+            else:
+                break
+
 
     model = 1 - models.comet_curve(lc["time"], snr["amplitude"], injection_time["t0"])
 
@@ -365,8 +373,7 @@ def exoplanet(
 def main():
     # files = # Your list of files or target IDs
     results = []
-    failed_iterations = 0
-
+    failed_ids = []
     # Map model names to functions
     model_functions = {
     'exocomet': comet,
@@ -376,10 +383,17 @@ def main():
 
     
     for target_ID in tqdm(files[0:args.number]):
-        
-        if args.model in model_functions:
-            model_functions[args.model](target_ID)
+        try:
+            if args.model in model_functions:
+                model_functions[args.model](target_ID)
+        except Exception as e:
+            failed_ids.append(target_ID)
+            continue
 
+    print(f"{args.number - len(failed_ids)} exocomets created.")
+    print(f"Failed iterations: {len(failed_ids)}")
+    # if failed_ids:
+    #     print(f"Failed IDs: {failed_ids}")
 
 
 if __name__ == "__main__":

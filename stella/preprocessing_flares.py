@@ -36,7 +36,7 @@ class FlareDataSet(object):
         catalog=None,
         downloadSet=None,
         additional_dirs=None,
-        cadences=200,
+        cadences=168,
         frac_balance=0.73,
         training=0.80,
         validation=0.10,
@@ -45,6 +45,7 @@ class FlareDataSet(object):
         other_datasets=None,
         other_datasets_labels=None,
         num_subset=None,
+        augment_portion=None
     ):
         """
         Loads in time, flux, flux error data. Reshapes
@@ -88,6 +89,9 @@ class FlareDataSet(object):
              The datasets to merge into the current FlareDataSet.
         num_subset: int, optional
              Select a subset of positive class data if you do not want to use the entire catalog.
+        augment_portion: float, optional
+             Augments a portion of the positive class and assigns them as part of the negative class.
+             Important if the shape is a characteristic (such as exocomets).
 
 
         """
@@ -154,7 +158,13 @@ class FlareDataSet(object):
         self.test_ids = misc[8]
         self.test_tpeaks = misc[9]
 
-        self.val_labels_ori = misc[10]
+        self.train_labels_ori = misc[10]
+        self.val_labels_ori = misc[11]
+        self.test_labels_ori = misc[12]
+
+        self.flip_exocomets(portion=augment_portion)
+        self.print_properly(portion=augment_portion)
+
 
 
     def load_files(
@@ -425,3 +435,71 @@ class FlareDataSet(object):
             attribute: getattr(self, attribute)[random_indices]
             for attribute in attributes
         }
+
+    def flip_exocomets(self, portion=None):
+        """Function to augment a portion of the positive class data by flipping the exocomet transits to get a 'reverse' exocomet shape.
+        If no portion is specified, then the default portion will be assigned as the entire positive class.
+
+        Parameters:
+        ------------
+        portion: float, optional
+            The portion of the positive class data to flip. Default is None.
+        
+
+        
+        """
+        ind_pc = np.where(self.train_labels == 1)[0]
+
+        if portion is None:
+            return
+        else:
+            portion = int(len(ind_pc) * portion)
+
+        flip_ind = np.random.choice(ind_pc,size=portion,replace=False)
+
+        flipped_data = [self.train_data[i][::-1] for i in flip_ind]
+        #flipped_labels = np.zeros(len(flipped_data))
+
+        flipped_labels = np.full(shape=(len(flipped_data),),fill_value=99)
+
+        self.train_data = np.concatenate((self.train_data, flipped_data), axis=0)
+        self.train_labels = np.concatenate((self.train_labels, flipped_labels), axis=0)
+        self.train_labels_ori = np.concatenate((self.train_labels_ori,flipped_labels),axis=0)
+    
+    def print_properly(self,portion=None):
+        ind_pc = np.where(self.train_labels == 1)
+        ind_nc = np.where(self.train_labels != 1)
+        print(f"Number of positive class training data: {len(ind_pc[0])}")
+        print(f"Number of negative class training data: {len(ind_nc[0])}")
+
+
+
+        val_pc = np.where(self.val_labels == 1)
+        val_nc = np.where(self.val_labels != 1)
+        print(f"Number of positive class validation data: {len(val_pc[0])}")
+        print(f"Number of negative class validation data: {len(val_nc[0])}")
+
+        ### SORT THIS BIT OUT
+        if portion is not None:
+            print(f"Size of augmented data (training set only): {int(len(ind_pc[0]) * portion)}")
+        else:
+            print(f"Size of augmented data (training set only): 0")
+
+        # I need to change original labels to original labels, original train labels and original val labels
+        unique_train, counts_train = np.unique(self.train_labels,return_counts=True)
+        unique_val, counts_val = np.unique(self.val_labels_ori,return_counts=True)
+
+        for value, count in zip(unique_train, counts_train):
+            print(f"Class label (training): {value}, Count: {count}")
+
+        for value, count in zip(unique_val, counts_val):
+            print(f"Class label (validation): {value}, Count: {count}")
+
+        print(f"Total size of training set: {len(self.train_data)}")
+        print(f"Total size of validation set: {len(self.val_data)}")
+        print(f"Total size of test set: {len(self.test_data)}")
+
+        try:
+            print(f"Approximate class imbalance: {np.round(100 * (1 - len(ind_pc[0]) / len(ind_nc[0])))}")
+        except ZeroDivisionError:
+            print("No second class to calculate imbalance.")

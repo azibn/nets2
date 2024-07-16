@@ -8,6 +8,7 @@ models/
 plots*
 notebooks/*.png
 cnn-models-stable/
+cnn-models/
 *.png
 exo*/
 
@@ -38,3 +39,7 @@ dist
 asu2.tsv
 binary_catalog_prsa.csv
 notebooks/.png
+.gitignore.swp
+catalog.txt
+output.prof
+time-array-s7.npy

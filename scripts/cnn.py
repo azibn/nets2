@@ -52,7 +52,7 @@ parser.add_argument(
     "-e",
     "--epochs",
     help="Number of epochs for CNN. Default 100.",
-    default=100,
+    default=200,
     type=int,
     dest="e",
 )

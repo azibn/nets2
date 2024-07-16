@@ -23,7 +23,12 @@ def gauss(t,A,t0,sigma):
         :sigma (float): Standard deviation or width of the Gaussian distribution.
 
     Returns:
-        float or array: Value of the Gaussian function at the given time(s)."""
+        float or array: Value of the Gaussian function at the given time(s).
+        
+        
+    Notes:
+        To maintain asymmetry in the exocomet direction, always have sigma tail > sigma.    
+        """
 
     return abs(A)*np.exp( -(t - t0)**2 / (2 * sigma**2) )
 
