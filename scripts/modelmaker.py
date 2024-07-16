@@ -272,7 +272,7 @@ def comet(
         ),
     )
 
-    return lc['lc_info']['TIC_ID'], injection_time["t0"], snr, lc['rms']
+    return lc['lc_info']['TIC_ID'], injection_time["t0"], snr['random_snr'], lc['rms']
 
 
 def exoplanet(
@@ -371,7 +371,7 @@ def exoplanet(
                 return None
             ti.sleep(retry_delay)
 
-    return lc['lc_info']['TIC_ID'], injection_time["t0"], snr, lc['rms']
+    return lc['lc_info']['TIC_ID'], injection_time["t0"], snr['random_snr'], lc['rms']
 
 
 def main():
@@ -407,11 +407,12 @@ def main():
     t = Table.from_pandas(data)
     t.write(f'{args.catalog}', format='ascii', overwrite=True) 
 
-    print(f"{args.number - len(failed_ids)} exocomets created.")
-    print(f"Failed iterations: {len(failed_ids)}")
-    # if failed_ids:
-    #     print(f"Failed IDs: {failed_ids}")
+
+    # if len(failed_ids) > 0 :
+    #     print(f"Failed IDs: {len(failed_ids)}")
+
 
 
 if __name__ == "__main__":
     main()
+    print("Injections complete.")
