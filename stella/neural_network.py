@@ -9,6 +9,8 @@ from sklearn.metrics import confusion_matrix, classification_report, roc_curve, 
 import matplotlib.pyplot as plt
 import seaborn as sns
 from keras.utils import to_categorical
+from tensorflow.keras.callbacks import TensorBoard
+
 
 __all__ = ["ConvNN"]
 
@@ -278,6 +280,9 @@ class ConvNN(object):
 
             keras.backend.clear_session()
 
+            log_dir = './logs'
+            tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
+
             # CREATES MODEL BASED ON GIVEN RANDOM SEED
             self.create_model(seed)
             self.history = self.model.fit(
@@ -287,6 +292,7 @@ class ConvNN(object):
                 batch_size=batch_size,
                 shuffle=shuffle,
                 validation_data=(self.ds.val_data, self.ds.val_labels),
+                callbacks = [tensorboard_callback]
             )
 
             col_names = list(self.history.history.keys())
@@ -743,63 +749,65 @@ class ConvNN(object):
 
         return cm, y_pred_multi, y_pred_binary_classes
 
+
     def evaluate(self, x_val, y_true, y_binary, class_names, seed):
-        """Making confusion matrix. Model predicts on the validation data.
-
-        Parameters
-        -----------
-        x_val: the data
-        y_true: the original labels
-        y_binary: the labels used for the CNN
-        class_names: the classes of things in the lightcurve
-        save_path: file path to save the evaluation results plot
         """
+        Evaluate the model and create a 2x6 confusion matrix.
 
-        y_pred_binary = self.model.predict(x_val, verbose=0)
+        Parameters:
+        -----------
+        x_val: array-like, the validation data
+        y_true: array-like, the original multi-class labels (0-5)
+        y_binary: array-like, the binary labels used for the CNN (0 or 1)
+        class_names: list, the names of the classes
+        seed: int, random seed for reproducibility
+        """
+        
+        # Predict using the model
+        y_pred_binary = self.model.predict(x_val)
         y_pred_binary_classes = (y_pred_binary > 0.5).astype(int).reshape(-1)
 
-        # 2X2 CONFUSION MATRIX
-        cm_2x2 = confusion_matrix(y_binary, y_pred_binary_classes)
+        # Create a 2x6 confusion matrix
+        cm_2x6 = np.zeros((2, 6), dtype=int)
 
-        # CALCULATE METRICS
-        tn, fp, fn, tp = cm_2x2.ravel()
-        total_exocomets = tp + fn
-        total_non_exocomets = tn + fp
+        for true_label, pred_label in zip(y_true, y_pred_binary_classes):
+            if pred_label == 1:  # Predicted as Exocomet
+                cm_2x6[0, true_label] += 1
+            else:  # Predicted as Non-exocomet
+                cm_2x6[1, true_label] += 1
 
-        # Calculate class-specific metrics
-        class_metrics = {}
-        for i, class_name in enumerate(class_names):
-            if class_name == "Exocomet":
-                continue  # Skip Exocomet as it's handled separately
-            class_correct = np.sum((y_true == i) & (y_pred_binary_classes == 0))
-            class_total = np.sum(y_true == i)
-            class_metrics[class_name] = (class_correct, class_total)
+        # Calculate metrics
+        total_exocomets = np.sum(cm_2x6[:, 0])
+        total_non_exocomets = np.sum(cm_2x6[:, 1:])
 
         # Prepare the results text
-        results_text = "2x2 Confusion Matrix:\n"
-        results_text += f"{cm_2x2}\n\n"
-        results_text += f"Exocomets correctly identified: {tp}/{total_exocomets} ({tp/total_exocomets:.2%})\n"
-        results_text += f"Non-exocomets correctly identified: {tn}/{total_non_exocomets} ({tn/total_non_exocomets:.2%})\n"
+        results_text = "2x6 Confusion Matrix:\n"
+        results_text += f"{cm_2x6}\n\n"
+        results_text += f"Exocomets correctly identified: {cm_2x6[0, 0]}/{total_exocomets} ({cm_2x6[0, 0]/total_exocomets:.2%})\n"
+        results_text += f"Non-exocomets correctly identified: {np.sum(cm_2x6[1, 1:])}/{total_non_exocomets} ({np.sum(cm_2x6[1, 1:])/total_non_exocomets:.2%})\n"
         results_text += "\nBreakdown of correctly identified non-exocomets:\n"
-        for class_name, (correct, total) in class_metrics.items():
+        
+        for i, class_name in enumerate(class_names[1:], start=1):
+            correct = cm_2x6[1, i]
+            total = np.sum(cm_2x6[:, i])
             results_text += f"  {class_name}: {correct}/{total} ({correct/total:.2%})\n"
 
         # Plotting the confusion matrix
-        plt.figure(figsize=(10, 12))
+        plt.figure(figsize=(14, 14))
 
         # Confusion Matrix Plot
         plt.subplot(2, 1, 1)
         sns.heatmap(
-            cm_2x2,
+            cm_2x6,
             annot=True,
             fmt="d",
             cmap="Blues",
-            xticklabels=["Non-exocomet", "Exocomet"],
-            yticklabels=["Non-exocomet", "Exocomet"],
+            xticklabels=class_names,
+            yticklabels=["Predicted Exocomet", "Predicted Non-exocomet"],
         )
-        plt.xlabel("Predicted")
-        plt.ylabel("Actual")
-        plt.title("2x2 Confusion Matrix")
+        plt.xlabel("Actual")
+        plt.ylabel("Predicted")
+        plt.title("2x6 Confusion Matrix")
 
         # Text Plot
         plt.subplot(2, 1, 2)
@@ -816,4 +824,79 @@ class ConvNN(object):
         plt.savefig(f"evaluation-plots-{seed}.png", dpi=200)
         plt.close()
 
-        return cm_2x2, y_pred_binary_classes
+        return cm_2x6, y_pred_binary_classes
+
+    # def evaluate(self, x_val, y_true, y_binary, class_names, seed):
+    #     """Making confusion matrix. Model predicts on the validation data.
+
+    #     Parameters
+    #     -----------
+    #     x_val: the data
+    #     y_true: the original labels
+    #     y_binary: the labels used for the CNN
+    #     class_names: the classes of things in the lightcurve
+    #     save_path: file path to save the evaluation results plot
+    #     """
+
+    #     y_pred_binary = self.model.predict(x_val, verbose=0)
+    #     y_pred_binary_classes = (y_pred_binary > 0.5).astype(int).reshape(-1)
+
+    #     # 2X2 CONFUSION MATRIX
+    #     cm_2x2 = confusion_matrix(y_binary, y_pred_binary_classes)
+
+    #     # CALCULATE METRICS
+    #     tn, fp, fn, tp = cm_2x2.ravel()
+    #     total_exocomets = tp + fn
+    #     total_non_exocomets = tn + fp
+
+    #     # Calculate class-specific metrics
+    #     class_metrics = {}
+    #     for i, class_name in enumerate(class_names):
+    #         if class_name == "Exocomet":
+    #             continue  # Skip Exocomet as it's handled separately
+    #         class_correct = np.sum((y_true == i) & (y_pred_binary_classes == 0))
+    #         class_total = np.sum(y_true == i)
+    #         class_metrics[class_name] = (class_correct, class_total)
+
+    #     # Prepare the results text
+    #     results_text = "2x2 Confusion Matrix:\n"
+    #     results_text += f"{cm_2x2}\n\n"
+    #     results_text += f"Exocomets correctly identified: {tp}/{total_exocomets} ({tp/total_exocomets:.2%})\n"
+    #     results_text += f"Non-exocomets correctly identified: {tn}/{total_non_exocomets} ({tn/total_non_exocomets:.2%})\n"
+    #     results_text += "\nBreakdown of correctly identified non-exocomets:\n"
+    #     for class_name, (correct, total) in class_metrics.items():
+    #         results_text += f"  {class_name}: {correct}/{total} ({correct/total:.2%})\n"
+
+    #     # Plotting the confusion matrix
+    #     plt.figure(figsize=(10, 12))
+
+    #     # Confusion Matrix Plot
+    #     plt.subplot(2, 1, 1)
+    #     sns.heatmap(
+    #         cm_2x2,
+    #         annot=True,
+    #         fmt="d",
+    #         cmap="Blues",
+    #         xticklabels=["Non-exocomet", "Exocomet"],
+    #         yticklabels=["Non-exocomet", "Exocomet"],
+    #     )
+    #     plt.xlabel("Predicted")
+    #     plt.ylabel("Actual")
+    #     plt.title("2x2 Confusion Matrix")
+
+    #     # Text Plot
+    #     plt.subplot(2, 1, 2)
+    #     plt.axis("off")
+    #     plt.text(
+    #         0,
+    #         0.5,
+    #         results_text,
+    #         fontsize=12,
+    #         verticalalignment="center",
+    #         family="monospace",
+    #     )
+    #     plt.tight_layout()
+    #     plt.savefig(f"evaluation-plots-{seed}.png", dpi=200)
+    #     plt.close()
+
+    #     return cm_2x2, y_pred_binary_classes

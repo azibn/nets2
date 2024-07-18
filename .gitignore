@@ -3,6 +3,7 @@
 ## exocomet models
 data/
 models/
+catalogs/
 
 ## folders
 plots*

@@ -254,7 +254,9 @@ def comet(
         else:
             break
 
-    model = 1 - models.comet_curve(lc["time"], snr["amplitude"], injection_time["t0"])
+
+    #sigma = np.random.uniform(0.5,1)
+    model = 1 - models.comet_curve(lc["time"], snr["amplitude"], injection_time["t0"]) 
 
     f = model * (lc["flux"] / np.nanmedian(lc["flux"]))
     fluxerror = lc["flux_error"] / lc["flux"]
@@ -272,7 +274,7 @@ def comet(
         ),
     )
 
-    return lc['lc_info']['TIC_ID'], injection_time["t0"], snr['random_snr'], lc['rms']
+    return lc['lc_info']['TIC_ID'], injection_time["t0"], snr['snr'], lc['rms']
 
 
 def exoplanet(
@@ -371,7 +373,7 @@ def exoplanet(
                 return None
             ti.sleep(retry_delay)
 
-    return lc['lc_info']['TIC_ID'], injection_time["t0"], snr['random_snr'], lc['rms']
+    return lc['lc_info']['TIC_ID'], injection_time["t0"], snr['snr'], lc['rms']
 
 
 def main():
@@ -393,15 +395,15 @@ def main():
     for target_ID in tqdm(files[0 : args.number]):
         try:
             if args.model in model_functions:
-                tic_id, time, snr, rms = model_functions[args.model](target_ID)
+                tic_id, time, snrs, rms = model_functions[args.model](target_ID)
                 tic.append(tic_id)
                 times.append(time)
-                snr_cat.append(snr)
+                snr_cat.append(snrs)
                 rms_cat.append(rms)
         except Exception as e:
             failed_ids.append(target_ID)
 
-    data = pd.DataFrame(data=[tic,time,snr_cat,rms_cat]).T
+    data = pd.DataFrame(data=[tic,times,snr_cat,rms_cat]).T
     data.columns = ['TIC','tpeak','SNR','RMS']
     data.TIC = data.TIC.astype(int)
     t = Table.from_pandas(data)

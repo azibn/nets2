@@ -1,3 +1,11 @@
+"""This script takes the folders created from `make_grid.py` and plots the injection recovery plot. It is a 2D "histogram" that shows the recovery rate of 
+    exocomets that have a probability > 0.5 per skew/duration bin.
+    
+    
+    This is not exactly my finest work of a script, but it does the job.
+    """
+
+
 import os
 import re
 import sys
@@ -46,6 +54,7 @@ def initialise_cnn():
         frac_balance=0.7,
         other_datasets=[exoplanets, fbinaries, rbinaries],
         other_datasets_labels=[2, 3, 4],
+        augment_portion=0.4
     )
 
     cnn = stella.ConvNN(
@@ -68,16 +77,19 @@ def process_file(
         errs = cnn.predict_err[0]
         predictions = cnn.predictions[0]
 
-        np.save(file,np.array([time,flux,errs,predictions]))
+        path_no_extenstion = os.path.splitext(file)[0]
+        newfile = path_no_extenstion + "-predictions.npy"
+
+        np.save(newfile,np.array([time,flux,errs,predictions]))
 
 
-        closest_index = np.argmin(np.abs(np.array(cnn.predict_time) - 1500))
+        closest_index = np.argmin(np.abs(np.array(cnn.predict_time) - 1496.5))
 
         ## time boundary conditions
         start_index = max(closest_index - 4, 0)
         end_index = min(closest_index + 5, len(cnn.predictions[0]))
 
-        return 1 if np.max(cnn.predictions[0][start_index:end_index]) > 0.9 else 0
+        return 1 if np.max(cnn.predictions[0][start_index:end_index]) > 0.5 else 0
     except Exception as e:
         print(f"Error processing file {file}: {e}")
         return 0
@@ -86,13 +98,14 @@ def process_file(
 def process_folder(args):
     base_dir, skew, duration, cnn = args
     folder_pattern = f"injected-skew_{skew}-duration-{duration:.2f}-snr-5"
-    files = glob(os.path.join(base_dir, folder_pattern, "*"))
+    files = glob(os.path.join(base_dir, folder_pattern, "*sector07.npy"))
 
     if not files:
         return 0
 
     labels = [process_file(file, cnn) for file in files]
-    return np.mean(labels) if labels else 0
+    print(labels)
+    return sum(labels) / len(labels) if labels else 0
 
 
 def main():
@@ -128,23 +141,31 @@ def main():
 
     recovery_grid = np.array(results).reshape(len(duration_values), len(skew_values))
 
+    np.save('recovery-grid.npy',recovery_grid)
+
     plt.figure(figsize=(10, 8))
     plt.imshow(
-        recovery_grid * 100,
-        extent=[
-            skew_values[0] - 0.5,
-            skew_values[-1] + 0.5,
-            duration_values[0],
-            duration_values[-1],
-        ],
-        aspect="auto",
-        origin="lower",
-        cmap="viridis",
+        recovery_grid,
+        extent=[skew_values[0] - 0.5, skew_values[-1] + 0.5, 0, len(duration_values)],
+        aspect='auto',
+        origin='lower',
+        cmap='viridis',
+        vmin=0,
+        vmax=1
     )
-    plt.colorbar(label="Percentage of Recovered Injections")
+    cbar = plt.colorbar(label="Fraction of Recovered Injections")
+    cbar.set_ticks([0, 0.25, 0.5, 0.75, 1])
+    cbar.set_ticklabels(["0%", "25%", "50%", "75%", "100%"])
     plt.xlabel("Skewness")
-    plt.ylabel("Sigma")
+    plt.ylabel("Sigma (Transit Duration)")
     plt.title("2D Histogram of Recovered CNN Injections")
+
+    # Adjust y-axis ticks to show actual duration values
+    plt.yticks(
+        np.arange(len(duration_values)) + 0.5,
+        [f'{d:.2f}' for d in duration_values]
+    )
+
     plt.savefig("recovery-plot-time-and-ind-cond-all-wider-window.png", dpi=200)
     plt.show()
     plt.close()

@@ -1,3 +1,8 @@
+"""This script makes a bunch of lightcurve models based on skewed Gaussian curves (these models are separate from the training set) based on skew, duration (sigma) and snr."""
+
+
+
+
 import argparse
 import os
 import sys
@@ -324,34 +329,34 @@ def exocomet(
 if __name__ == "__main__":
 
     generate_models(args.n)
-    sys.exit()
+    #sys.exit()
 
     # Generate the combinations
     combinations = list(itertools.product(skew, duration_range, range(args.n)))
 
-    # Extract the skewness and duration values
-    skew_values = [comb[0] for comb in combinations]
-    duration_values = [comb[1] for comb in combinations]
+    # # Extract the skewness and duration values
+    # skew_values = [comb[0] for comb in combinations]
+    # duration_values = [comb[1] for comb in combinations]
 
-    # Create a 2D histogram
-    hist, xedges, yedges = np.histogram2d(
-        skew_values, duration_values, bins=[len(skew), len(duration_range)]
-    )
+    # # Create a 2D histogram
+    # hist, xedges, yedges = np.histogram2d(
+    #     skew_values, duration_values, bins=[len(skew), len(duration_range)]
+    # )
 
-    # Plot the heatmap
-    plt.figure(figsize=(8, 6))
-    plt.imshow(
-        hist,
-        interpolation="nearest",
-        origin="lower",
-        extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]],
-    )
-    plt.colorbar(label="Number of iterations")
-    plt.xlabel("Skewness")
-    plt.ylabel("Duration")
-    plt.grid(True)
-    plt.title("Number of iterations per skewness-duration combination")
-    plt.show()
+    # # Plot the heatmap
+    # plt.figure(figsize=(8, 6))
+    # plt.imshow(
+    #     hist,
+    #     interpolation="nearest",
+    #     origin="lower",
+    #     extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]],
+    # )
+    # plt.colorbar(label="Number of iterations")
+    # plt.xlabel("Skewness")
+    # plt.ylabel("Duration")
+    # plt.grid(True)
+    # plt.title("Number of iterations per skewness-duration combination")
+    # plt.show()
 
 
 # def inject_model():
