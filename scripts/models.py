@@ -4,6 +4,8 @@ import numpy as np
 from utils import import_lightcurve
 from scipy.optimize import curve_fit
 from astropy.table import Table
+from scipy.stats import skewnorm
+
 
 """Building the synthetic data for the training set"""
 
@@ -75,7 +77,28 @@ def comet_curve_fit(x, y):
 
     params_bounds = [[0, x[0], 0, 0], [np.inf, x[-1], width / 2, width / 2]]
     params, cov = curve_fit(comet_curve, x, y, params_init, bounds=params_bounds)
+
     return params, cov
+
+def skewed_gaussian(x, alpha=1, t0=1496.5, sigma=1, depth=0.001):
+    """Creates a skewed Gaussian model transit.
+
+    Parameters:
+        x: Time array.
+        alpha: Skewness parameter (0 for symmetric).
+        t0: Mean of the Gaussian.
+        sigma: Standard deviation of the Gaussian.
+        depth: Transit depth.
+
+    Returns:
+        y: The value of the skewed Gaussian at each input data point x.
+    """
+    pdf = skewnorm.pdf(x, alpha, loc=t0, scale=sigma)
+    normalized_pdf = pdf / pdf.max()
+    return 1 - (depth * normalized_pdf)
+
+
+
 
 
 def create_transit_model(time, depth, t0, sigma=3.02715600e-01, tail=3.40346173e-01):
@@ -103,40 +126,3 @@ def inject_lightcurve(table, time=None, depth=None):
 
     return lc
 
-
-def save_lightcurve(data, lc_info, format="fits"):
-    """
-    Saves lightcurve as either a FITS file or a NumPy array in .npz format based on the specified format.
-
-    Parameters:
-        data: Astropy Table
-            Data to be saved.
-        format: str, optional
-            Format in which to save the data. Can be 'fits' for FITS files or 'npz' for NumPy arrays in .npz format.
-            Default is 'fits'.
-    """
-    # # Save the data as a FITS file
-    # if format == 'fits':
-    #     if isinstance(data, Table):
-    #         filename = f'K2_{lc_info['KEPLERID']}.fits'
-    #         data.write(filename, format='fits')
-    #     else:
-    #         raise ValueError("Data must be an Astropy Table for FITS files.")
-    # # Convert the Astropy Table to a NumPy array and save as .npz format
-    # elif format == 'npz':
-    #     if isinstance(data, Table):
-    #         filename = f'K2_{lc_info['KEPLERID']}.npz'
-    #         column_dict = {}
-    #         for col in data.dtype.names:
-    #             # Extract the column corresponding to the current field
-    #             column_data = data[col]
-
-    #             # Add the column data to the dictionary with the field name as the key
-    #             column_dict[col] = column_data
-
-    #         # Save the dictionary containing all columns as a single .npz file
-    #         np.savez(f'{lc_info['KEPLERID']}.npz', **column_dict)
-    #     else:
-    #         raise ValueError("Data must be an Astropy Table for .npz format.")
-    # else:
-    #     raise ValueError("Unsupported format. Use 'fits' for FITS files or 'npz' for NumPy arrays.")

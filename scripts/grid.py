@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy.stats import skewnorm
-
+import modelmaker
 sys.path.insert(1, "/Users/azib/Documents/open_source/nets2/scripts")
 sys.path.insert(1, "/Users/azib/Documents/open_source/nets2/stella")
 from utils import *

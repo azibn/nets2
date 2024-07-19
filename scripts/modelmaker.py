@@ -1,10 +1,10 @@
 """
-Creates models of exocomets/exoplanets/eclipsing binaries, and injecting them into real lightcurves.
+Creates models of exocomets/exoplanets/eclipsing binaries, and injecting them into real lightcurves. 
 """
 
 import os, sys
 import numpy as np
-import build_synthetic_set as models
+import models 
 import matplotlib.pyplot as plt
 from astropy.table import Table
 from glob import glob
@@ -16,6 +16,7 @@ import batman
 import warnings
 import argparse
 import astropy.constants as const
+from scipy.stats import skewnorm
 import time as ti
 import signal
 import pandas as pd
@@ -23,35 +24,6 @@ import pandas as pd
 sys.path.insert(1, "/Users/azib/Documents/open_source/nets2/stella/")
 sys.path.insert(1, "/Users/azib/Documents/open_source/nets2/scripts/")
 from utils import *
-
-
-parser = argparse.ArgumentParser(
-    description="Create exocomet/exoplanet/eclipsing binary transits."
-)
-
-parser.add_argument(
-    help="The target directory of lightcurves to use for model injection.",
-    dest="dir",
-)
-parser.add_argument("-f", "--folder", help="target output folder.", dest="folder")
-parser.add_argument("-c", "--catalog-name", help="target catalog file. Saved in a .txt format", dest="catalog")
-
-parser.add_argument("--number", default=5000, dest="number", type=int)
-
-parser.add_argument(
-    "-m",
-    "--model",
-    help='Select the model type. Options: "exocomet", "exoplanet","binary".',
-    dest="model",
-)
-
-
-args = parser.parse_args()
-
-files = glob(f"{args.dir}/*.fits")
-random.shuffle(files)
-
-os.makedirs(args.folder, exist_ok=True)
 
 
 def calculate_timestep(table):
@@ -224,7 +196,7 @@ def find_valid_injection_time(lc, window_size, max_attempts=100):
 
 
 def comet(
-    file, folder=args.folder, min_snr=3, max_snr=20, window_size=84, max_retries=5
+    file, folder, min_snr=3, max_snr=20, window_size=84, max_retries=5, method='skewed_gaussian',save_model=False
 ):
     """
     Creates a comet profile and injects it into a lightcurve.
@@ -254,31 +226,51 @@ def comet(
         else:
             break
 
-
-    #sigma = np.random.uniform(0.5,1)
-    model = 1 - models.comet_curve(lc["time"], snr["amplitude"], injection_time["t0"]) 
+    # sigma = np.random.uniform(0.5,1)
+    if method == 'comet_curve':
+        model = 1 - models.comet_curve(lc["time"], snr["amplitude"], injection_time["t0"])
+    elif method == 'skewed_gaussian':
+        alpha = int(np.random.uniform(1,4))
+        model = models.skewed_gaussian(lc['time'],depth=snr['amplitude'],alpha=alpha,sigma=0.74,t0=injection_time["t0"]) ## sigma can change
 
     f = model * (lc["flux"] / np.nanmedian(lc["flux"]))
     fluxerror = lc["flux_error"] / lc["flux"]
 
     sector = f"{lc['lc_info']['sector']:02d}"
-    np.save(
-        f"{folder}/{lc['lc_info']['TIC_ID']}_sector{sector}.npy",
-        np.array(
-            [
-                lc["time"][lc["real"] == 1],
-                f[lc["real"] == 1],
-                fluxerror[lc["real"] == 1],
-                lc["real"][lc["real"] == 1],
-            ]
-        ),
-    )
 
-    return lc['lc_info']['TIC_ID'], injection_time["t0"], snr['snr'], lc['rms']
+    if save_mode:
+        np.save(
+            f"{folder}/{lc['lc_info']['TIC_ID']}_sector{sector}_model.npy",
+            np.array(
+                [
+                    lc["time"][lc["real"] == 1],
+                    f[lc["real"] == 1],
+                    fluxerror[lc["real"] == 1],
+                    lc["real"][lc["real"] == 1],
+                    model[lc["real"] == 1],
+                ]
+            ),
+        )        
+
+    else:
+        np.save(
+            f"{folder}/{lc['lc_info']['TIC_ID']}_sector{sector}.npy",
+            np.array(
+                [
+                    lc["time"][lc["real"] == 1],
+                    f[lc["real"] == 1],
+                    fluxerror[lc["real"] == 1],
+                    lc["real"][lc["real"] == 1],
+                ]
+            ),
+        )
+
+    return lc["lc_info"]["TIC_ID"], injection_time["t0"], snr["snr"], lc["rms"]
 
 
 def exoplanet(
     file,
+    folder,
     min_snr=5,
     max_snr=20,
     window_size=84,
@@ -291,7 +283,7 @@ def exoplanet(
     retry_delay=1,
     timeout_duration=30,
     binary=False,
-    folder=args.folder,
+    
 ):
 
     lc = prepare_lightcurve(file)
@@ -373,18 +365,25 @@ def exoplanet(
                 return None
             ti.sleep(retry_delay)
 
-    return lc['lc_info']['TIC_ID'], injection_time["t0"], snr['snr'], lc['rms']
+    return lc["lc_info"]["TIC_ID"], injection_time["t0"], snr["snr"], lc["rms"]
 
 
-def main():
+def main(args):
     # files = # Your list of files or target IDs
+
+    files = glob(f"{args.dir}/*.fits")
+    random.shuffle(files)
+
+    os.makedirs(args.folder, exist_ok=True)
+
+
     results = []
     failed_ids = []
     # Map model names to functions
     model_functions = {
-        "exocomet": comet,
-        "exoplanet": lambda target_ID: exoplanet(target_ID),
-        "binary": lambda target_ID: exoplanet(target_ID, binary=True),
+        "exocomet": comet(folder=args.folder),
+        "exoplanet": lambda target_ID: exoplanet(target_ID,folder=args.folder),
+        "binary": lambda target_ID: exoplanet(target_ID, folder=args.folder, binary=True),
     }
 
     tic = []
@@ -393,28 +392,55 @@ def main():
     rms_cat = []
 
     for target_ID in tqdm(files[0 : args.number]):
-        try:
-            if args.model in model_functions:
+
+        if args.model in model_functions:
+            try:
                 tic_id, time, snrs, rms = model_functions[args.model](target_ID)
                 tic.append(tic_id)
                 times.append(time)
                 snr_cat.append(snrs)
                 rms_cat.append(rms)
-        except Exception as e:
-            failed_ids.append(target_ID)
+            except Exception as e:
+                failed_ids.append(target_ID)
 
-    data = pd.DataFrame(data=[tic,times,snr_cat,rms_cat]).T
-    data.columns = ['TIC','tpeak','SNR','RMS']
+    data = pd.DataFrame(data=[tic, times, snr_cat, rms_cat]).T
+    data.columns = ["TIC", "tpeak", "SNR", "RMS"]
     data.TIC = data.TIC.astype(int)
     t = Table.from_pandas(data)
-    t.write(f'{args.catalog}', format='ascii', overwrite=True) 
+    t.write(f"{args.catalog}", format="ascii", overwrite=True)
 
-
-    if len(failed_ids) > 0 :
+    if len(failed_ids) > 0:
         print(f"Failed IDs: {len(failed_ids)}")
 
 
-
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(
+    description="Create exocomet/exoplanet/eclipsing binary transits."
+    )
+
+    parser.add_argument(
+        help="The target directory of lightcurves to use for model injection.",
+        dest="dir",
+    )
+    parser.add_argument("-f", "--folder", help="target output folder.", dest="folder")
+    parser.add_argument(
+        "-c",
+        "--catalog-name",
+        help="target catalog file. Saved in a .txt format",
+        dest="catalog",
+    )
+
+    parser.add_argument("--number", default=5000, dest="number", type=int)
+
+    parser.add_argument(
+        "-m",
+        "--model",
+        help='Select the model type. Options: "exocomet", "exoplanet","binary".',
+        dest="model",
+    )
+
+
+    args = parser.parse_args()
+
+    main(args)
     print("Injections complete.")
