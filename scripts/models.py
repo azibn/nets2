@@ -98,31 +98,27 @@ def skewed_gaussian(x, alpha=1, t0=1496.5, sigma=1, depth=0.001):
     return 1 - (depth * normalized_pdf)
 
 
+def comet_ingress(x, A, mu, sigma, shape):
+    '''exponential comet ingress, `shape` controls curviness'''
+    sh = shape/sigma
+    norm = 1 - np.exp(-sh*sigma)
+    return A/norm*(1 - np.exp(-sh*(x-mu+sigma)))
+
+def comet_curve2(x, A, mu, sigma, tail, shape=3):
+    return np.piecewise(x, [x<(mu-sigma), np.logical_and(x>=(mu-sigma), x<mu), x>=mu],
+                        [0,
+                         lambda t: comet_ingress(t, A, mu, sigma, shape),
+                         lambda t: A*np.exp(-abs(t-mu)/tail)])
 
 
-
-def create_transit_model(time, depth, t0, sigma=3.02715600e-01, tail=3.40346173e-01):
-    """Creates an exocomet light curve model. This does not return the flux,
-    you will have to multiply by the flux of your original lightcurve."""
-    return 1 - comet_curve(time, depth, t0, sigma, tail)
-
-
-def inject_lightcurve(table, time=None, depth=None):
-    """Injects the exocomet light curve model into the light curve.
-
-    Inputs:
-    - file: the light curve filepath
-    - time: the time array of the light curve. If None, a random time is calculated.
-    - depth: the depth of the transit. If None, a random depth between 0.1% and 0.0001% is calculated.
-
-    """
-    time = lc["TIME"]
-
-    if time is not None:
-        depth = 10 ** np.random.uniform(-4, -2, 1)[0]
-        t0 = np.random.uniform(time[0], time[-1])
-
-    lc["INJFLUX"] = create_transit_model(time, depth, t0)
-
-    return lc
-
+def ldecomet(t, K, beta, t0, delta_t):
+    # Calculate Δ
+    delta = np.where(t >= t0, beta * (t - t0), 0)
+    
+    # Calculate Δ'
+    delta_prime = np.where(t >= t0 + delta_t, beta * (t - t0 - delta_t), 0)
+    
+    # Calculate the relative flux decrease
+    delta_f_over_f = K * (np.exp(-delta) - np.exp(-delta_prime))
+    
+    return delta_f_over_f

@@ -1,0 +1,37 @@
+name: nets2-metal
+channels:
+  - conda-forge
+  - defaults
+  - apple
+variables:
+  CONDA_SUBDIR: osx-arm64
+dependencies:
+  - python=3.8
+  - astropy
+  - black
+  - bokeh
+  - cython
+  - ipython
+  - jupyter
+  - jupyterlab
+  - matplotlib
+  - numpy
+  - optuna
+  - pandas
+  - pip
+  - poetry
+  - pylint
+  - scikit-learn
+  - scipy
+  - seaborn
+  - tensorflow
+  - tensorflow-deps
+  - tqdm
+  - pip:
+    - batman-package
+    - lightkurve
+    - lxml
+    - optuna-dashboard
+    - tensorflow-macos
+    - tensorflow-metal
+    - wotan

@@ -101,7 +101,7 @@ def gridplot(array, skew_vals, duration_vals,outputfile='recovery-plot.png'):
 
     ax.set_yticks(duration_values)
     ax.set_yticklabels(duration_values)
-    plt.savefig(f'{}',dpi=300,bbox_inches='tight')
+    plt.savefig(f'{outputfile}'}',dpi=300,bbox_inches='tight')
     plt.show()
     plt.close()
 

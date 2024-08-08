@@ -3,23 +3,21 @@ Creates models of exocomets/exoplanets/eclipsing binaries, and injecting them in
 """
 
 import os, sys
-import numpy as np
-import models 
-import matplotlib.pyplot as plt
-from astropy.table import Table
+import time as ti
+import argparse
+import random
+import time as ti
 from glob import glob
 from tqdm import tqdm
+import numpy as np
+import pandas as pd
+from astropy.table import Table
 import wotan
-import lightkurve as lk
-import random
 import batman
-import warnings
-import argparse
 import astropy.constants as const
 from scipy.stats import skewnorm
-import time as ti
-import signal
-import pandas as pd
+import models
+
 
 sys.path.insert(1, "/Users/azib/Documents/open_source/nets2/stella/")
 sys.path.insert(1, "/Users/azib/Documents/open_source/nets2/scripts/")
@@ -196,7 +194,14 @@ def find_valid_injection_time(lc, window_size, max_attempts=100):
 
 
 def comet(
-    file, folder, min_snr=3, max_snr=20, window_size=84, max_retries=5, method='skewed_gaussian',save_model=False
+    file,
+    folder,
+    min_snr=3,
+    max_snr=20,
+    window_size=84,
+    max_retries=5,
+    method=None,
+    save_model=True,
 ):
     """
     Creates a comet profile and injects it into a lightcurve.
@@ -227,18 +232,39 @@ def comet(
             break
 
     # sigma = np.random.uniform(0.5,1)
-    if method == 'comet_curve':
-        model = 1 - models.comet_curve(lc["time"], snr["amplitude"], injection_time["t0"])
-    elif method == 'skewed_gaussian':
-        alpha = int(np.random.uniform(1,4))
-        model = models.skewed_gaussian(lc['time'],depth=snr['amplitude'],alpha=alpha,sigma=0.74,t0=injection_time["t0"]) ## sigma can change
+
+    model_functions = {
+    "comet_curve": lambda lc, snr, t0: 1 - models.comet_curve(lc["time"], snr["amplitude"], t0["t0"]),
+    "skewed_gaussian": lambda lc, snr, t0: models.skewed_gaussian(
+        lc["time"],
+        depth=snr["amplitude"],
+        alpha=int(np.random.uniform(1, 4)),
+        sigma=0.74,
+        t0=t0["t0"],
+    ),
+}
+
+
+    if method == "comet_curve" or method is None:
+        model = 1 - models.comet_curve(
+            lc["time"], snr["amplitude"], injection_time["t0"]
+        )
+    elif method == "skewed_gaussian":
+        alpha = int(np.random.uniform(1, 4))
+        model = models.skewed_gaussian(
+            lc["time"],
+            depth=snr["amplitude"],
+            alpha=alpha,
+            sigma=0.74,
+            t0=injection_time["t0"],
+        )  ## sigma can change
 
     f = model * (lc["flux"] / np.nanmedian(lc["flux"]))
     fluxerror = lc["flux_error"] / lc["flux"]
 
     sector = f"{lc['lc_info']['sector']:02d}"
 
-    if save_mode:
+    if save_model:
         np.save(
             f"{folder}/{lc['lc_info']['TIC_ID']}_sector{sector}_model.npy",
             np.array(
@@ -250,7 +276,7 @@ def comet(
                     model[lc["real"] == 1],
                 ]
             ),
-        )        
+        )
 
     else:
         np.save(
@@ -283,7 +309,6 @@ def exoplanet(
     retry_delay=1,
     timeout_duration=30,
     binary=False,
-    
 ):
 
     lc = prepare_lightcurve(file)
@@ -376,14 +401,15 @@ def main(args):
 
     os.makedirs(args.folder, exist_ok=True)
 
-
     results = []
     failed_ids = []
     # Map model names to functions
     model_functions = {
-        "exocomet": comet(folder=args.folder),
-        "exoplanet": lambda target_ID: exoplanet(target_ID,folder=args.folder),
-        "binary": lambda target_ID: exoplanet(target_ID, folder=args.folder, binary=True),
+        "exocomet": lambda target_ID: comet(target_ID, folder=args.folder),
+        "exoplanet": lambda target_ID: exoplanet(target_ID, folder=args.folder),
+        "binary": lambda target_ID: exoplanet(
+            target_ID, folder=args.folder, binary=True
+        ),
     }
 
     tic = []
@@ -393,9 +419,9 @@ def main(args):
 
     for target_ID in tqdm(files[0 : args.number]):
 
-        if args.model in model_functions:
+        if args.transit in model_functions:
             try:
-                tic_id, time, snrs, rms = model_functions[args.model](target_ID)
+                tic_id, time, snrs, rms = model_functions[args.transit](target_ID)
                 tic.append(tic_id)
                 times.append(time)
                 snr_cat.append(snrs)
@@ -415,7 +441,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-    description="Create exocomet/exoplanet/eclipsing binary transits."
+        description="Create exocomet/exoplanet/eclipsing binary transits."
     )
 
     parser.add_argument(
@@ -433,12 +459,18 @@ if __name__ == "__main__":
     parser.add_argument("--number", default=5000, dest="number", type=int)
 
     parser.add_argument(
-        "-m",
-        "--model",
-        help='Select the model type. Options: "exocomet", "exoplanet","binary".',
-        dest="model",
+        "-t",
+        "--transit-type",
+        help='Select the transit type. Options: "exocomet", "exoplanet","binary".',
+        dest="transit",
     )
 
+    parser.add_argument(
+        "-m",
+        "--model",
+        help="Select the model used to create exocomets. Options: 'comet_curve', 'skewed_gaussian'. Default 'comet_curve'.",
+        dest="model",
+    )
 
     args = parser.parse_args()
 

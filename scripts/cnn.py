@@ -192,11 +192,12 @@ if __name__ == "__main__":
         catalog=args.catalog,
         merge_datasets=True,
         other_datasets=datasets,
-        other_datasets_labels=[2, 3, 4],
+        other_datasets_labels=[2, 3, 4, 1],
         cadences=args.c,
         training=args.training,
         validation=args.validation,
         frac_balance=args.frac_balance,  ### REMOVE ALL NEGATIVE CLASSES OF THE MERGING DATASETS
+        augment_portion=0.3
     )
 
     cnn = stella.ConvNN(
@@ -220,7 +221,7 @@ if __name__ == "__main__":
             if args.optimise:
                 print("Selected optimising hyperparameters...")
                 best_params = optimise.optimise_hyperparameters(
-                    cnn, n_trials=100
+                    cnn, n_trials=20
                 )  # You can adjust n_trials as needed
                 optimise.apply_best_params(cnn, best_params, seed=seed)
                 print("Optimisation complete. Best parameters:", best_params)

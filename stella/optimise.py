@@ -64,7 +64,7 @@ def objective(trial, cnn_instance):
     return history.history["val_accuracy"][-1]
 
 
-def optimise_hyperparameters(cnn_instance, n_trials=100):
+def optimise_hyperparameters(cnn_instance, n_trials=20):
     storage = "sqlite:///optuna_study.db"
 
     # Create the study
@@ -75,7 +75,7 @@ def optimise_hyperparameters(cnn_instance, n_trials=100):
         load_if_exists=True,
     )
     study.optimize(
-        lambda trial: objective(trial, cnn_instance), n_trials=n_trials, n_jobs=-1
+        lambda trial: objective(trial, cnn_instance), n_trials=n_trials, n_jobs=4
     )
 
     print("Best trial:")

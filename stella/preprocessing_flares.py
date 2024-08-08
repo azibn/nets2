@@ -94,6 +94,7 @@ class FlareDataSet(object):
              Important if the shape is a characteristic (such as exocomets).
 
 
+
         """
         if fn_dir is not None:
             self.fn_dir = fn_dir
@@ -119,6 +120,8 @@ class FlareDataSet(object):
 
         if merge_datasets == True:
             self.merge(other_datasets, labels=other_datasets_labels)
+        
+
 
         misc = split_data(
             self.labels,
@@ -365,7 +368,7 @@ class FlareDataSet(object):
         self.training_ids = ids
         self.training_matrix = matrix
 
-    def merge(self, other, set_to_negative=False, labels=0):
+    def merge(self, other, labels=0):
         """Merge one FlareDataSet instance into this one.
 
         other: your other FlareDataSet instances.
@@ -376,13 +379,16 @@ class FlareDataSet(object):
         ### READS IN DATASETS (IF MULTIPLE, THIS IS HANDLED TOO)
         for i, o in enumerate(other):
             if labels != 0:
-                o.original_labels[:] = labels[i]
-            o.labels[:] = 0
+                if isinstance(labels, (list, np.ndarray)):
+                    current_label = labels[i]
+                else:
+                    current_label = labels
+                
+                o.original_labels[:] = current_label
+                
+                if current_label != 1:
+                    o.labels[:] = 0
 
-            #   elif set_to_negative:
-            #       o.labels[:] = 0
-
-            # Merge 'other' into 'self'
 
             self.training_matrix = np.concatenate(
                 [self.training_matrix, o.training_matrix]
@@ -403,6 +409,8 @@ class FlareDataSet(object):
             self.real = np.concatenate([self.real, o.real], axis=0)
 
             ### NOTE: TPEAKS IS NOT CONCATENATED HERE.
+
+
 
     def subsets(self, num_subset):
         """Returns subset of positive class"""
@@ -452,18 +460,21 @@ class FlareDataSet(object):
         else:
             portion = int(len(ind_pc) * portion)
 
-        flip_ind = np.random.choice(ind_pc, size=portion, replace=False)
+            flip_ind = np.random.choice(ind_pc, size=portion, replace=False)
 
-        flipped_data = [self.train_data[i][::-1] for i in flip_ind]
-        # flipped_labels = np.zeros(len(flipped_data))
+            flipped_data = [self.train_data[i][::-1] for i in flip_ind]
+            # flipped_labels = np.zeros(len(flipped_data))
 
-        flipped_labels = np.full(shape=(len(flipped_data),), fill_value=99)
+            flipped_labels = np.zeros(len(flipped_data))
+            flipped_labels_ori = np.full(shape=(len(flipped_data),), fill_value=99)
 
-        self.train_data = np.concatenate((self.train_data, flipped_data), axis=0)
-        self.train_labels = np.concatenate((self.train_labels, flipped_labels), axis=0)
-        self.train_labels_ori = np.concatenate(
-            (self.train_labels_ori, flipped_labels), axis=0
-        )
+            self.train_data = np.concatenate((self.train_data, flipped_data), axis=0)
+            self.train_labels = np.concatenate((self.train_labels, flipped_labels), axis=0)
+            self.train_labels_ori = np.concatenate(
+                (self.train_labels_ori, flipped_labels_ori), axis=0
+            )
+
+
 
     def print_properly(self, portion=None):
         ind_pc = np.where(self.train_labels == 1)

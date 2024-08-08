@@ -9,7 +9,8 @@ from sklearn.metrics import confusion_matrix, classification_report, roc_curve, 
 import matplotlib.pyplot as plt
 import seaborn as sns
 from keras.utils import to_categorical
-from tensorflow.keras.callbacks import TensorBoard
+from tensorflow.keras.callbacks import TensorBoard, EarlyStopping, ReduceLROnPlateau
+from tensorflow.keras.regularizers import l2
 
 
 __all__ = ["ConvNN"]
@@ -77,7 +78,7 @@ class ConvNN(object):
         """
         self.ds = ds
         self.layers = layers
-        self.optimizer = optimizer  # keras.optimizers.Adam(learning_rate=0.0001)
+        self.optimizer =  optimizer # keras.optimizers.legacy.Adam(learning_rate=0.0005) # optimizer
         self.loss = loss
         self.metrics = metrics
 
@@ -124,30 +125,32 @@ class ConvNN(object):
             filter2 = 64
             dense = 32
             dropout = 0.1
+            l2val = 0.0001
+            activation = 'relu'
 
             # CONVOLUTIONAL LAYERS
             model.add(
                 tf.keras.layers.Conv1D(
                     filters=filter1,
                     kernel_size=7,
-                    activation="relu",
+                    activation=activation,
                     padding="same",
-                    input_shape=(self.cadences, 1),
+                    input_shape=(self.cadences, 1) #, kernel_regularizer=l2(l2val)
                 )
-            )
+            )  #
             model.add(tf.keras.layers.MaxPooling1D(pool_size=2))
             model.add(tf.keras.layers.Dropout(dropout))
             model.add(
                 tf.keras.layers.Conv1D(
-                    filters=filter2, kernel_size=3, activation="relu", padding="same"
-                )
-            )
+                    filters=filter2, kernel_size=3, activation=activation, padding="same" 
+            ))  ## kernel_regularizer=l2(l2val)
+                
             model.add(tf.keras.layers.MaxPooling1D(pool_size=2))
             model.add(tf.keras.layers.Dropout(dropout))
 
             # DENSE LAYERS AND SOFTMAX OUTPUT
             model.add(tf.keras.layers.Flatten())
-            model.add(tf.keras.layers.Dense(dense, activation="relu"))
+            model.add(tf.keras.layers.Dense(dense, activation=activation))# #, kernel_regularizer=l2(l2val)))
             model.add(tf.keras.layers.Dropout(dropout))
             model.add(
                 tf.keras.layers.Dense(1, activation="sigmoid")
@@ -156,6 +159,12 @@ class ConvNN(object):
         else:
             for l in self.layers:
                 model.add(l)
+
+        early_stopping = EarlyStopping(
+        monitor='val_loss',
+        patience=30,
+        restore_best_weights=True
+        )
 
         # COMPILE MODEL AND SET OPTIMIZER, LOSS, METRICS
         if self.metrics is None:
@@ -174,6 +183,7 @@ class ConvNN(object):
             )
 
         self.model = model
+        self.early_stopping = early_stopping
 
         # PRINTS MODEL SUMMARY
         model.summary()
@@ -270,6 +280,8 @@ class ConvNN(object):
             ],  ### NEED TO ADD ATTRIBUTE FOR TEST ORIGINAL LABELS
             names=["tic", "gt", "tpeak"],
         )
+        # Learning rate schedule
+        reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=45, min_lr=0.0001)
 
         for seed in seeds:
 
@@ -292,7 +304,7 @@ class ConvNN(object):
                 batch_size=batch_size,
                 shuffle=shuffle,
                 validation_data=(self.ds.val_data, self.ds.val_labels),
-                callbacks = [tensorboard_callback]
+                callbacks = [tensorboard_callback ,reduce_lr, self.early_stopping]
             )
 
             col_names = list(self.history.history.keys())
@@ -303,7 +315,7 @@ class ConvNN(object):
                 table.add_column(col)
 
             # SAVES THE MODEL TO OUTPUT DIRECTORY
-            self.model.save(os.path.join(self.output_dir, model_fmt))
+            self.model.save(os.path.join(self.output_dir, model_fmt),overwrite=True)
 
             # GETS PREDICTIONS FOR EACH LIGHTCURVE IN THE VALIDATION SET
             val_preds = self.model.predict(self.ds.val_data)
@@ -321,13 +333,13 @@ class ConvNN(object):
                 seed=seed,
             )
 
-            cm2, predictions2, _ = self.evaluate2(
-                self.ds.val_data,
-                self.ds.val_labels_ori,
-                self.ds.val_labels,
-                class_names,
-                seed=seed,
-            )
+            # cm2, predictions2, _ = self.evaluate2(
+            #     self.ds.val_data,
+            #     self.ds.val_labels_ori,
+            #     self.ds.val_labels,
+            #     class_names,
+            #     seed=seed,
+            # )
 
             # store results
             self.confusion_matrix = cm
@@ -752,7 +764,7 @@ class ConvNN(object):
 
     def evaluate(self, x_val, y_true, y_binary, class_names, seed):
         """
-        Evaluate the model and create a 2x6 confusion matrix.
+        Evaluate the model and create a 2x5 confusion matrix.
 
         Parameters:
         -----------
@@ -765,31 +777,31 @@ class ConvNN(object):
         
         # Predict using the model
         y_pred_binary = self.model.predict(x_val)
-        y_pred_binary_classes = (y_pred_binary > 0.5).astype(int).reshape(-1)
+        y_pred_binary_classes = (y_pred_binary > 0.6).astype(int).reshape(-1)
 
-        # Create a 2x6 confusion matrix
-        cm_2x6 = np.zeros((2, 6), dtype=int)
+        # Create a 2x5 confusion matrix
+        cm_2x5 = np.zeros((2, 5), dtype=int)
 
         for true_label, pred_label in zip(y_true, y_pred_binary_classes):
             if pred_label == 1:  # Predicted as Exocomet
-                cm_2x6[0, true_label] += 1
+                cm_2x5[0, true_label] += 1
             else:  # Predicted as Non-exocomet
-                cm_2x6[1, true_label] += 1
+                cm_2x5[1, true_label] += 1
 
         # Calculate metrics
-        total_exocomets = np.sum(cm_2x6[:, 0])
-        total_non_exocomets = np.sum(cm_2x6[:, 1:])
+        total_exocomets = np.sum(cm_2x5[:, 0])
+        total_non_exocomets = np.sum(cm_2x5[:, 1:])
 
         # Prepare the results text
-        results_text = "2x6 Confusion Matrix:\n"
-        results_text += f"{cm_2x6}\n\n"
-        results_text += f"Exocomets correctly identified: {cm_2x6[0, 0]}/{total_exocomets} ({cm_2x6[0, 0]/total_exocomets:.2%})\n"
-        results_text += f"Non-exocomets correctly identified: {np.sum(cm_2x6[1, 1:])}/{total_non_exocomets} ({np.sum(cm_2x6[1, 1:])/total_non_exocomets:.2%})\n"
+        results_text = "2x5 Confusion Matrix:\n"
+        results_text += f"{cm_2x5}\n\n"
+        results_text += f"Exocomets correctly identified: {cm_2x5[0, 0]}/{total_exocomets} ({cm_2x5[0, 0]/total_exocomets:.2%})\n"
+        results_text += f"Non-exocomets correctly identified: {np.sum(cm_2x5[1, 1:])}/{total_non_exocomets} ({np.sum(cm_2x5[1, 1:])/total_non_exocomets:.2%})\n"
         results_text += "\nBreakdown of correctly identified non-exocomets:\n"
         
         for i, class_name in enumerate(class_names[1:], start=1):
-            correct = cm_2x6[1, i]
-            total = np.sum(cm_2x6[:, i])
+            correct = cm_2x5[1, i]
+            total = np.sum(cm_2x5[:, i])
             results_text += f"  {class_name}: {correct}/{total} ({correct/total:.2%})\n"
 
         # Plotting the confusion matrix
@@ -798,7 +810,7 @@ class ConvNN(object):
         # Confusion Matrix Plot
         plt.subplot(2, 1, 1)
         sns.heatmap(
-            cm_2x6,
+            cm_2x5,
             annot=True,
             fmt="d",
             cmap="Blues",
@@ -807,7 +819,7 @@ class ConvNN(object):
         )
         plt.xlabel("Actual")
         plt.ylabel("Predicted")
-        plt.title("2x6 Confusion Matrix")
+        plt.title("2x5 Confusion Matrix")
 
         # Text Plot
         plt.subplot(2, 1, 2)
@@ -824,7 +836,7 @@ class ConvNN(object):
         plt.savefig(f"evaluation-plots-{seed}.png", dpi=200)
         plt.close()
 
-        return cm_2x6, y_pred_binary_classes
+        return cm_2x5, y_pred_binary_classes
 
     # def evaluate(self, x_val, y_true, y_binary, class_names, seed):
     #     """Making confusion matrix. Model predicts on the validation data.

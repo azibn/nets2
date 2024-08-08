@@ -60,11 +60,10 @@ args = parser.parse_args()
 
 
 
-
-skew = np.arange(-15, 15, 1)
+skew = np.arange(-7, 8, 1)
 # duration_range = np.arange(0.1,1.2,0.1) ## linear space
 min_duration = 0.1
-max_duration = 1.3
+max_duration = 2
 num_duration_points = 10
 duration_range = np.logspace(
     np.log10(min_duration), np.log10(max_duration), num_duration_points
@@ -97,17 +96,24 @@ def initialise_cnn():
         validation=0.1,
         frac_balance=1,
     )
+
+    exocomets_extra = stella.FlareDataSet(fn_dir="/Users/azib/Documents/open_source/nets2/models/comets5k-extra",
+    catalog="/Users/azib/Documents/open_source/nets2/catalogs/comets5k-extra.txt",
+    cadences=168,
+    frac_balance=1)
+
+
     ds = stella.FlareDataSet(
-        fn_dir="/Users/azib/Documents/open_source/nets2/models/comets5k/",
-        catalog="/Users/azib/Documents/open_source/nets2/catalogs/comets.txt",
+        fn_dir="/Users/azib/Documents/open_source/nets2/models/comets10k/",
+        catalog="/Users/azib/Documents/open_source/nets2/catalogs/comets10k.txt",
         cadences=168,
         training=0.8,
         validation=0.1,
         merge_datasets=True,
-        frac_balance=0.7,
-        other_datasets=[exoplanets, fbinaries, rbinaries],
-        other_datasets_labels=[2, 3, 4],
-        augment_portion=0.4
+        frac_balance=0.71,
+        other_datasets=[exoplanets, fbinaries, rbinaries, exocomets_extra],
+        other_datasets_labels=[2, 3, 4, 1],
+        augment_portion=0.1
     )
 
     cnn = stella.ConvNN(
@@ -131,6 +137,7 @@ def generate_models(n_models=args.n, save=args.s, save_path=args.sp, types=args.
     # models = []
     id = []
     snr_range = np.arange(3, 15, 2)
+    snr_range = np.arange(5,6,1)
     # types = ['noiseless','injected']
 
     if types == "noiseless":
@@ -161,16 +168,15 @@ def generate_models(n_models=args.n, save=args.s, save_path=args.sp, types=args.
         lightcurves = np.random.choice(lightcurves, size=5000, replace=False)
         print("globbing complete.")
 
-    modelname = "/Users/azib/Documents/open_source/nets2/cnn-models/ensemble_s0002_i0200_b0.7.h5"
+    modelname = "/Users/azib/Documents/open_source/nets2/cnn-models/ensemble_s0042_i0200_b0.82.h5"
     cnn = initialise_cnn()
 
     for skewness in skew:
         for duration in duration_range:
             for snr in snr_range:
-                for _ in tqdm.tqdm(
-                    range(n_models),
-                    desc=f"Skew: {skewness}, Duration: {duration:.2f}, SNR: {snr}",
-                ):
+                for _ in range(n_models):
+                    #desc=f"Skew: {skewness}, Duration: {duration:.2f}, SNR: {snr}",
+            
                     lightcurve = np.random.choice(
                         lightcurves
                     )  # Randomly choose a lightcurve for each model
@@ -210,10 +216,9 @@ def generate_models(n_models=args.n, save=args.s, save_path=args.sp, types=args.
 
                     id.append(lc_info["TIC_ID"])
 
-    catalogtime = np.full_like(time, 1500)
-    df = create_catalog(id, catalogtime)
+    catalogtime = np.full_like(time, 1496.5)
+    # df = create_catalog(id, catalogtime)
 
-    # return models
 
 
 def create_catalog(id, time, catalog_name="catalog.txt"):
@@ -269,8 +274,9 @@ def exocomet(
 
     ### CREATE MODEL BASED ON THE INTERPOLATED LIGHTCURVE TIME ARRAY
 
-    model = 1 - m.comet_curve(time, A=A, t0=t0)
-   # model = models.skewed_gaussian(time[real == 1], alpha=skew, t0=t0, sigma=duration, depth=A)
+    
+    # model = 1 - m.comet_curve(time, A=A, t0=t0)
+    model = m.skewed_gaussian(time, alpha=skew, t0=t0, sigma=duration, depth=A)
 
     ### INJECT MODEL INTO INTERPOLATED LIGHTCURVE
     f = model * (flux / np.nanmedian(flux))
