@@ -4,11 +4,11 @@ import optuna
 
 def objective(trial, cnn_instance):
     # HYPERPARAMETERS TO TUNE
-    filter1 = trial.suggest_int("filter1", 8, 64)
-    filter2 = trial.suggest_int("filter2", 32, 128)
-    dense = trial.suggest_int("dense", 16, 64)
+    filter1 = trial.suggest_int("filter1", 8, 256)
+    filter2 = trial.suggest_int("filter2", 32, 512)
+    dense = trial.suggest_int("dense", 16, 512)
     dropout = trial.suggest_float("dropout", 0.1, 0.5)
-    learning_rate = trial.suggest_float("learning_rate", 0.00001, 0.01, log=True)
+    learning_rate = trial.suggest_float("learning_rate", 0.0001, 0.01, log=True)
 
     kernel_size1 = trial.suggest_int("kernel_size1", 3, 11, step=2)
     kernel_size2 = trial.suggest_int(
@@ -16,14 +16,14 @@ def objective(trial, cnn_instance):
     )  # MUST BE SMALLER THAN KERNEL_SIZE1
     pool_size1 = trial.suggest_int("pool_size1", 2, 4)
     pool_size2 = trial.suggest_int("pool_size2", 2, 4)
-
+    activation = 'leaky_relu '#trial.suggest_categorical("activation", ["relu", "tanh","elu","selu","sigmoid","leaky_relu"])
     # MODEL
     model = tf.keras.models.Sequential(
         [
             tf.keras.layers.Conv1D(
                 filters=filter1,
-                kernel_size=7,  # kernel_size1
-                activation="relu",
+                kernel_size=kernel_size1,
+                activation=activation,
                 padding="same",
                 input_shape=(cnn_instance.cadences, 1),
             ),
@@ -31,14 +31,14 @@ def objective(trial, cnn_instance):
             tf.keras.layers.Dropout(dropout),
             tf.keras.layers.Conv1D(
                 filters=filter2,
-                kernel_size=3,  # kernel_size2
-                activation="relu",
+                kernel_size=kernel_size2,
+                activation=activation,
                 padding="same",
             ),
             tf.keras.layers.MaxPooling1D(pool_size=pool_size2),
             tf.keras.layers.Dropout(dropout),
             tf.keras.layers.Flatten(),
-            tf.keras.layers.Dense(dense, activation="relu"),
+            tf.keras.layers.Dense(dense, activation=activation),
             tf.keras.layers.Dropout(dropout),
             tf.keras.layers.Dense(1, activation="sigmoid"),
         ]
@@ -55,8 +55,8 @@ def objective(trial, cnn_instance):
     history = model.fit(
         cnn_instance.ds.train_data,
         cnn_instance.ds.train_labels,
-        epochs=20,  # Use fewer epochs for faster optimization
-        batch_size=64,
+        epochs=150,  # Use fewer epochs for faster optimization
+        batch_size=128,
         validation_data=(cnn_instance.ds.val_data, cnn_instance.ds.val_labels),
         verbose=0,
     )
@@ -93,8 +93,8 @@ def apply_best_params(cnn_instance, best_params, seed):
     cnn_instance.layers = [
         tf.keras.layers.Conv1D(
             filters=best_params["filter1"],
-            kernel_size=7,
-            activation="relu",
+            kernel_size=best_params["kernel_size1"],
+            activation=best_params["activation"],
             padding="same",
             input_shape=(cnn_instance.cadences, 1),
         ),
@@ -102,14 +102,14 @@ def apply_best_params(cnn_instance, best_params, seed):
         tf.keras.layers.Dropout(best_params["dropout"]),
         tf.keras.layers.Conv1D(
             filters=best_params["filter2"],
-            kernel_size=3,
-            activation="relu",
+            kernel_size=best_params["kernel_size2"],
+            activation=best_params["activation"],
             padding="same",
         ),
         tf.keras.layers.MaxPooling1D(pool_size=best_params["pool_size2"]),
         tf.keras.layers.Dropout(best_params["dropout"]),
         tf.keras.layers.Flatten(),
-        tf.keras.layers.Dense(best_params["dense"], activation="relu"),
+        tf.keras.layers.Dense(best_params["dense"], activation=best_params["activation"]),
         tf.keras.layers.Dropout(best_params["dropout"]),
         tf.keras.layers.Dense(1, activation="sigmoid"),
     ]

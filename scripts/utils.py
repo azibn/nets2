@@ -44,6 +44,7 @@ def import_lightcurve(
     return data, meta
 
 
-def normalise(flux):
-    """Median-normalises the flux to 1"""
-    return flux / np.median(flux)
+def get_fits_columns(file):
+    lc, _ = import_lightcurve(file)
+    return lc.columns
+

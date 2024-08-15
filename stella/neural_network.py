@@ -78,7 +78,7 @@ class ConvNN(object):
         """
         self.ds = ds
         self.layers = layers
-        self.optimizer =  optimizer # keras.optimizers.legacy.Adam(learning_rate=0.0005) # optimizer
+        self.optimizer = optimizer #keras.optimizers.legacy.Adam(learning_rate=0.005) # optimizer
         self.loss = loss
         self.metrics = metrics
 
@@ -102,6 +102,37 @@ class ConvNN(object):
 
         self.output_dir = output_dir
 
+        self.clean_data()
+
+    def clean_data(self):
+            """
+            Removes NaN values from the traning and validation data, and replaces the values
+            with zeros. Function taken from one of the pull requests.
+            """
+            # Clean training data
+            valid_indices_train = ~np.isnan(self.ds.train_data).any(axis=(1, 2))
+            self.ds.train_data = self.ds.train_data[valid_indices_train]
+            self.ds.train_labels = self.ds.train_labels[valid_indices_train]
+
+            # Clean validation data
+            valid_indices_val = ~np.isnan(self.ds.val_data).any(axis=(1, 2))
+            self.ds.val_data = self.ds.val_data[valid_indices_val]
+            self.ds.val_labels = self.ds.val_labels[valid_indices_val]
+
+            # Clean additional validation attributes
+            self.ds.val_ids = self.ds.val_ids[valid_indices_val]
+            self.ds.val_tpeaks = self.ds.val_tpeaks[valid_indices_val]
+            # Replace NaN values with zero
+            self.ds.train_data = np.nan_to_num(self.ds.train_data, nan=0.0)
+            self.ds.val_data = np.nan_to_num(self.ds.val_data, nan=0.0)
+
+            # Replace NaN values with the mean of the corresponding feature
+            col_mean_train = np.nanmean(self.ds.train_data, axis=1, keepdims=True)
+            self.ds.train_data = np.where(np.isnan(self.ds.train_data), col_mean_train, self.ds.train_data)
+
+            col_mean_val = np.nanmean(self.ds.val_data, axis=1, keepdims=True)
+            self.ds.val_data = np.where(np.isnan(self.ds.val_data), col_mean_val, self.ds.val_data)
+
     def create_model(self, seed):
         """
         Creates the Tensorflow keras model with appropriate layers.
@@ -121,31 +152,34 @@ class ConvNN(object):
 
         # DEFAULT NETWORK MODEL FROM FEINSTEIN ET AL. (in prep)
         if self.layers is None:
+            kernel1 = 7
+            kernel2 = 3
+            pool = 2
             filter1 = 16
             filter2 = 64
             dense = 32
             dropout = 0.1
             l2val = 0.0001
-            activation = 'relu'
+            activation = 'leaky_relu'
 
             # CONVOLUTIONAL LAYERS
             model.add(
                 tf.keras.layers.Conv1D(
                     filters=filter1,
-                    kernel_size=7,
+                    kernel_size=kernel1,
                     activation=activation,
                     padding="same",
-                    input_shape=(self.cadences, 1) #, kernel_regularizer=l2(l2val)
+                    input_shape=(self.cadences, 1), kernel_regularizer=l2(l2val)
                 )
             )  #
-            model.add(tf.keras.layers.MaxPooling1D(pool_size=2))
+            model.add(tf.keras.layers.MaxPooling1D(pool_size=pool))
             model.add(tf.keras.layers.Dropout(dropout))
             model.add(
                 tf.keras.layers.Conv1D(
-                    filters=filter2, kernel_size=3, activation=activation, padding="same" 
-            ))  ## kernel_regularizer=l2(l2val)
+                    filters=filter2, kernel_size=kernel2, activation=activation, padding="same", 
+             kernel_regularizer=l2(l2val)))
                 
-            model.add(tf.keras.layers.MaxPooling1D(pool_size=2))
+            model.add(tf.keras.layers.MaxPooling1D(pool_size=pool))
             model.add(tf.keras.layers.Dropout(dropout))
 
             # DENSE LAYERS AND SOFTMAX OUTPUT
@@ -217,6 +251,7 @@ class ConvNN(object):
         shuffle=False,
         pred_test=False,
         save=False,
+        savemodelname=None
     ):
         """
         Runs n number of models with given initial random seeds of
@@ -281,14 +316,18 @@ class ConvNN(object):
             names=["tic", "gt", "tpeak"],
         )
         # Learning rate schedule
-        reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=45, min_lr=0.0001)
+        reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=20, min_lr=0.0001)
 
         for seed in seeds:
-
+            
             fmt_tail = "_s{0:04d}_i{1:04d}_b{2}".format(
                 int(seed), int(epochs), self.frac_balance
             )
             model_fmt = "ensemble" + fmt_tail + ".h5"
+
+            if savemodelname is not None:
+                model_fmt = savemodelname + '_' + model_fmt
+    
 
             keras.backend.clear_session()
 

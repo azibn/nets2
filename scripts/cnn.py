@@ -79,6 +79,22 @@ parser.add_argument(
     dest="merge_catalogs",
 )
 
+parser.add_argument(
+    "--merge_labels",
+    nargs="+",
+    help="Labels for additional datasets",
+    dest="merge_labels",
+    type=int,
+)
+
+parser.add_argument(
+    "-fp",
+    "--flip-portion",
+    help="Flips a portion of the positive class data from left-right. Insert value as fraction. Default is 0.3",
+    default=0.3,
+    type=float,
+)
+
 
 def plot_metrics(cnn, seed):
     """
@@ -192,12 +208,12 @@ if __name__ == "__main__":
         catalog=args.catalog,
         merge_datasets=True,
         other_datasets=datasets,
-        other_datasets_labels=[2, 3, 4, 1],
+        other_datasets_labels=args.merge_labels,  # change this so that this becomes a parser argumnet
         cadences=args.c,
         training=args.training,
         validation=args.validation,
-        frac_balance=args.frac_balance,  ### REMOVE ALL NEGATIVE CLASSES OF THE MERGING DATASETS
-        augment_portion=0.3
+        frac_balance=args.frac_balance,  ### REMOVED ALL NEGATIVE CLASSES OF THE MERGING DATASETS
+        augment_portion=0.3,  # make this a parser argument (default value is OK)
     )
 
     cnn = stella.ConvNN(
@@ -221,7 +237,7 @@ if __name__ == "__main__":
             if args.optimise:
                 print("Selected optimising hyperparameters...")
                 best_params = optimise.optimise_hyperparameters(
-                    cnn, n_trials=20
+                    cnn, n_trials=50
                 )  # You can adjust n_trials as needed
                 optimise.apply_best_params(cnn, best_params, seed=seed)
                 print("Optimisation complete. Best parameters:", best_params)

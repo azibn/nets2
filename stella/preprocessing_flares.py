@@ -379,6 +379,7 @@ class FlareDataSet(object):
         ### READS IN DATASETS (IF MULTIPLE, THIS IS HANDLED TOO)
         for i, o in enumerate(other):
             if labels != 0:
+
                 if isinstance(labels, (list, np.ndarray)):
                     current_label = labels[i]
                 else:
@@ -454,25 +455,37 @@ class FlareDataSet(object):
 
         """
         ind_pc = np.where(self.train_labels == 1)[0]
+        val_pc = np.where(self.val_labels == 1)[0]
 
         if portion is None:
             return
         else:
-            portion = int(len(ind_pc) * portion)
+            portion_tr = int(len(ind_pc) * portion)
+            portion_val = int(len(val_pc) * portion)
 
-            flip_ind = np.random.choice(ind_pc, size=portion, replace=False)
+            flip_ind = np.random.choice(ind_pc, size=portion_tr, replace=False)
+            #flip_ind_val = np.random.choice(val_pc, size=portion_val, replace=False)
 
             flipped_data = [self.train_data[i][::-1] for i in flip_ind]
+            #flipped_data_val = [self.val_data[i][::-1] for i in flip_ind_val]
             # flipped_labels = np.zeros(len(flipped_data))
 
             flipped_labels = np.zeros(len(flipped_data))
-            flipped_labels_ori = np.full(shape=(len(flipped_data),), fill_value=99)
+            #flipped_labels_val = np.zeros(len(flipped_data_val))
+            flipped_labels_ori = np.full(shape=(len(flipped_data),), fill_value=0)
+            #flipped_labels_ori_val = np.full(shape=(len(flipped_data_val),), fill_value=0)
 
             self.train_data = np.concatenate((self.train_data, flipped_data), axis=0)
             self.train_labels = np.concatenate((self.train_labels, flipped_labels), axis=0)
             self.train_labels_ori = np.concatenate(
                 (self.train_labels_ori, flipped_labels_ori), axis=0
             )
+
+            # self.val_data = np.concatenate((self.val_data, flipped_data_val), axis=0)
+            # self.val_labels = np.concatenate((self.val_labels, flipped_labels_val), axis=0)
+            # self.val_labels_ori = np.concatenate(
+            #     (self.val_labels_ori, flipped_labels_ori_val), axis=0
+            # )
 
 
 

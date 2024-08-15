@@ -196,7 +196,7 @@ def find_valid_injection_time(lc, window_size, max_attempts=100):
 def comet(
     file,
     folder,
-    min_snr=3,
+    min_snr=5,
     max_snr=20,
     window_size=84,
     max_retries=5,
@@ -208,7 +208,7 @@ def comet(
 
     file: path to file
     folder: folder to save the output lightcurve
-    min_snr: Minimum SNR (default SNR=3).
+    min_snr: Minimum SNR (default SNR=5).
     max_snr: Maximum SNR (default SNR=20).
     window_size: Half of the window size of the lightcurve cutout to use for CNN (default 84, corresponding to a total of 128 cadences (3.5 days).)
 

@@ -1,6 +1,7 @@
 # nets2 
 
 ## exocomet models
+272-candidates-npy/
 data/
 models/
 catalogs/
@@ -8,10 +9,12 @@ catalogs/
 ## folders
 plots*
 notebooks/*.png
-cnn-models-stable/
-cnn-models/
+cnn-models*
 *.png
 exo*/
+logs/
+notebooks/grant-test/
+
 
 ## stella stuff that i don't need
 docs/
