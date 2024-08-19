@@ -1,7 +1,6 @@
 from astropy.io import fits
 from astropy.table import Table
 import numpy as np
-import pandas as pd
 
 
 def import_lightcurve(
@@ -48,3 +47,10 @@ def get_fits_columns(file):
     lc, _ = import_lightcurve(file)
     return lc.columns
 
+
+def rms_normalise(flux):
+    """Normalise the lightcurve by it's RMS and then performs a min-max scaling. Assumes flux is already normalised to 1."""
+
+    f = flux - 1
+    f = (f / np.nanstd(flux)) + 1
+    return (f - np.min(f)) / (np.max(f) - np.min(f))

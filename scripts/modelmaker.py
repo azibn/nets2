@@ -84,7 +84,7 @@ def clean_data(table):
                 fluxerror_step = (fei - flux_error[-1]) / steps
 
                 # For small gaps, pretend interpolated data is real.
-                if steps > 4:
+                if steps > 3:
                     set_real = 0
                 else:
                     set_real = 1
@@ -199,7 +199,7 @@ def comet(
     min_snr=5,
     max_snr=20,
     window_size=84,
-    max_retries=5,
+    max_retries=50,
     method=None,
     save_model=True,
 ):
@@ -211,6 +211,7 @@ def comet(
     min_snr: Minimum SNR (default SNR=5).
     max_snr: Maximum SNR (default SNR=20).
     window_size: Half of the window size of the lightcurve cutout to use for CNN (default 84, corresponding to a total of 128 cadences (3.5 days).)
+    save_model: Saves the lightcurve model when exporting the `.npy` file too.
 
     """
     lc = prepare_lightcurve(file)
@@ -231,24 +232,28 @@ def comet(
         else:
             break
 
-    # sigma = np.random.uniform(0.5,1)
 
-    model_functions = {
-    "comet_curve": lambda lc, snr, t0: 1 - models.comet_curve(lc["time"], snr["amplitude"], t0["t0"]),
-    "skewed_gaussian": lambda lc, snr, t0: models.skewed_gaussian(
-        lc["time"],
-        depth=snr["amplitude"],
-        alpha=int(np.random.uniform(1, 4)),
-        sigma=0.74,
-        t0=t0["t0"],
-    ),
-}
+#     model_functions = {
+#     "comet_curve": lambda lc, snr, t0: 1 - models.comet_curve(lc["time"], snr["amplitude"], t0["t0"]),
+#     "skewed_gaussian": lambda lc, snr, t0: models.skewed_gaussian(
+#         lc["time"],
+#         depth=snr["amplitude"],
+#         alpha=int(np.random.uniform(1, 4)),
+#         sigma=0.74,
+#         t0=t0["t0"],
+#     ),
+# }
 
 
     if method == "comet_curve" or method is None:
-        model = 1 - models.comet_curve(
-            lc["time"], snr["amplitude"], injection_time["t0"]
-        )
+        shape = np.round(np.random.uniform(1.5,4),3)
+        sigma = np.round(np.random.uniform(0.25,0.7),3)
+        tail = np.round(np.random.uniform(0.35,0.5),3)
+
+        ## t0, A, sigma, tail, shape
+        model = 1 - models.comet_curve2(
+            lc["time"], snr["amplitude"], injection_time["t0"], sigma = sigma, tail = tail, shape = shape)
+        
     elif method == "skewed_gaussian":
         alpha = int(np.random.uniform(1, 4))
         model = models.skewed_gaussian(
@@ -260,6 +265,10 @@ def comet(
         )  ## sigma can change
 
     f = model * (lc["flux"] / np.nanmedian(lc["flux"]))
+
+    ### PERFORM SCALING
+
+
     fluxerror = lc["flux_error"] / lc["flux"]
 
     sector = f"{lc['lc_info']['sector']:02d}"
@@ -305,7 +314,7 @@ def exoplanet(
     alpha=1.7,
     m_star=1,
     r_star=1,
-    max_retries=5,
+    max_retries=50,
     retry_delay=1,
     timeout_duration=30,
     binary=False,
