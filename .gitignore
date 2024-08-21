@@ -5,6 +5,8 @@
 data/
 models/
 catalogs/
+notebooks/binaries-catalog-s7-new.txt
+optuna_study.db
 
 ## folders
 plots*

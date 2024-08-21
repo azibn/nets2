@@ -682,10 +682,19 @@ class ConvNN(object):
 
             bad = np.where(np.abs(diff) >= med + 1.5 * std)[0]
             for b in bad:
-                bad_inds = np.append(
-                    bad_inds, np.arange(b - cad_pad, b + cad_pad, 1, dtype=int)
-                )
+                start = max(b - cad_pad, 0)
+                end = min(b + cad_pad, len(t))
+                bad_inds = np.append(bad_inds, np.arange(start, end, 1, dtype=int))
+                # bad_inds = np.append(
+                #     bad_inds, np.arange(b - cad_pad, b + cad_pad, 1, dtype=int)
+                # )
+
+            bad_inds = np.unique(bad_inds)
             bad_inds = np.sort(bad_inds)
+            # Ensure all indices are within bounds
+            bad_inds = bad_inds[(bad_inds >= 0) & (bad_inds < len(t))]
+
+            
             return np.delete(all_inds, bad_inds)
 
         model = keras.models.load_model(modelname)
@@ -819,28 +828,28 @@ class ConvNN(object):
         y_pred_binary_classes = (y_pred_binary > 0.6).astype(int).reshape(-1)
 
         # Create a 2x5 confusion matrix
-        cm_2x5 = np.zeros((2, 5), dtype=int)
+        cm_2x6 = np.zeros((2, 6), dtype=int)
 
         for true_label, pred_label in zip(y_true, y_pred_binary_classes):
             if pred_label == 1:  # Predicted as Exocomet
-                cm_2x5[0, true_label] += 1
+                cm_2x6[0, true_label] += 1
             else:  # Predicted as Non-exocomet
-                cm_2x5[1, true_label] += 1
+                cm_2x6[1, true_label] += 1
 
         # Calculate metrics
-        total_exocomets = np.sum(cm_2x5[:, 0])
-        total_non_exocomets = np.sum(cm_2x5[:, 1:])
+        total_exocomets = np.sum(cm_2x6[:, 0])
+        total_non_exocomets = np.sum(cm_2x6[:, 1:])
 
         # Prepare the results text
         results_text = "2x5 Confusion Matrix:\n"
-        results_text += f"{cm_2x5}\n\n"
-        results_text += f"Exocomets correctly identified: {cm_2x5[0, 0]}/{total_exocomets} ({cm_2x5[0, 0]/total_exocomets:.2%})\n"
-        results_text += f"Non-exocomets correctly identified: {np.sum(cm_2x5[1, 1:])}/{total_non_exocomets} ({np.sum(cm_2x5[1, 1:])/total_non_exocomets:.2%})\n"
+        results_text += f"{cm_2x6}\n\n"
+        results_text += f"Exocomets correctly identified: {cm_2x6[0, 0]}/{total_exocomets} ({cm_2x6[0, 0]/total_exocomets:.2%})\n"
+        results_text += f"Non-exocomets correctly identified: {np.sum(cm_2x6[1, 1:])}/{total_non_exocomets} ({np.sum(cm_2x6[1, 1:])/total_non_exocomets:.2%})\n"
         results_text += "\nBreakdown of correctly identified non-exocomets:\n"
         
         for i, class_name in enumerate(class_names[1:], start=1):
-            correct = cm_2x5[1, i]
-            total = np.sum(cm_2x5[:, i])
+            correct = cm_2x6[1, i]
+            total = np.sum(cm_2x6[:, i])
             results_text += f"  {class_name}: {correct}/{total} ({correct/total:.2%})\n"
 
         # Plotting the confusion matrix
@@ -849,7 +858,7 @@ class ConvNN(object):
         # Confusion Matrix Plot
         plt.subplot(2, 1, 1)
         sns.heatmap(
-            cm_2x5,
+            cm_2x6,
             annot=True,
             fmt="d",
             cmap="Blues",
@@ -875,7 +884,7 @@ class ConvNN(object):
         plt.savefig(f"evaluation-plots-{seed}.png", dpi=200)
         plt.close()
 
-        return cm_2x5, y_pred_binary_classes
+        return cm_2x6, y_pred_binary_classes
 
     # def evaluate(self, x_val, y_true, y_binary, class_names, seed):
     #     """Making confusion matrix. Model predicts on the validation data.

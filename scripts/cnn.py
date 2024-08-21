@@ -14,7 +14,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import stella
-import optimise  ## NEED TO FIND OUT HOW TO IMPORT THIS SCRIPT PROPERLY
+import optimise
 
 
 parser = argparse.ArgumentParser(
@@ -237,7 +237,7 @@ if __name__ == "__main__":
             if args.optimise:
                 print("Selected optimising hyperparameters...")
                 best_params = optimise.optimise_hyperparameters(
-                    cnn, n_trials=50
+                    cnn, n_trials=100
                 )  # You can adjust n_trials as needed
                 optimise.apply_best_params(cnn, best_params, seed=seed)
                 print("Optimisation complete. Best parameters:", best_params)

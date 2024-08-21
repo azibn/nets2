@@ -60,7 +60,7 @@ args = parser.parse_args()
 
 
 
-skew = np.arange(-7, 8, 1)
+skew = np.arange(5, 5, 1)
 # duration_range = np.arange(0.1,1.2,0.1) ## linear space
 min_duration = 0.1
 max_duration = 2
@@ -73,16 +73,16 @@ duration_range = np.logspace(
 def initialise_cnn():
 
     exoplanets = stella.FlareDataSet(
-    fn_dir="/Users/azib/Documents/open_source/nets2/models/exoplanets1k/",
-    catalog="/Users/azib/Documents/open_source/nets2/catalogs/exoplanets1k.txt",
+    fn_dir="/Users/azib/Documents/open_source/nets2/models/exoplanets1k-new/",
+    catalog="/Users/azib/Documents/open_source/nets2/catalogs/exoplanets1k-new.txt",
     cadences=168,
     training=0.8,
     validation=0.1,
     frac_balance=1,
     )
     fbinaries = stella.FlareDataSet(
-        fn_dir="/Users/azib/Documents/open_source/nets2/models/binaries1k/",
-        catalog="/Users/azib/Documents/open_source/nets2/catalogs/fakebinaries1k.txt",
+        fn_dir="/Users/azib/Documents/open_source/nets2/models/binaries1k-new/",
+        catalog="/Users/azib/Documents/open_source/nets2/catalogs/binaries1k-new.txt",
         cadences=168,
         training=0.8,
         validation=0.1,
@@ -97,23 +97,24 @@ def initialise_cnn():
         frac_balance=1,
     )
 
-    exocomets_extra = stella.FlareDataSet(fn_dir="/Users/azib/Documents/open_source/nets2/models/comets5k-extra",
-    catalog="/Users/azib/Documents/open_source/nets2/catalogs/comets5k-extra.txt",
-    cadences=168,
-    frac_balance=1)
+    exocomets_extra = stella.FlareDataSet(fn_dir='/Users/azib/Documents/open_source/nets2/models/comets25k-normalised-depthscaled/',
+                         catalog='/Users/azib/Documents/open_source/nets2/catalogs/comets25k-normalised-depthscaled.txt',cadences=168,frac_balance=1)
+    
+    cdips = stella.FlareDataSet(fn_dir='/Users/azib/Documents/open_source/nets2/models/cdips/',
+                         catalog='/Users/azib/Documents/open_source/nets2/catalogs/cdips.txt',cadences=168,frac_balance=1)
 
 
     ds = stella.FlareDataSet(
-        fn_dir="/Users/azib/Documents/open_source/nets2/models/comets10k/",
-        catalog="/Users/azib/Documents/open_source/nets2/catalogs/comets10k.txt",
+        fn_dir="/Users/azib/Documents/open_source/nets2/models/comets15k-normalised-depthscaled/",
+        catalog="/Users/azib/Documents/open_source/nets2/catalogs/comets15k-normalised-depthscaled.txt",
         cadences=168,
         training=0.8,
-        validation=0.1,
+        validation=0.15,
         merge_datasets=True,
-        frac_balance=0.71,
-        other_datasets=[exoplanets, fbinaries, rbinaries, exocomets_extra],
-        other_datasets_labels=[2, 3, 4, 1],
-        augment_portion=0.1
+        frac_balance=0.68,
+        other_datasets=[exoplanets, fbinaries, rbinaries, exocomets_extra, cdips],
+        other_datasets_labels=[2, 3, 4, 1, 5],
+        augment_portion=0.4
     )
 
     cnn = stella.ConvNN(
@@ -168,7 +169,7 @@ def generate_models(n_models=args.n, save=args.s, save_path=args.sp, types=args.
         lightcurves = np.random.choice(lightcurves, size=5000, replace=False)
         print("globbing complete.")
 
-    modelname = "/Users/azib/Documents/open_source/nets2/cnn-models/ensemble_s0042_i0200_b0.82.h5"
+    modelname = "/Users/azib/Documents/open_source/nets2/cnn-models/ensemble_s0041_i0150_b0.68.h5"
     cnn = initialise_cnn()
 
     for skewness in skew:
@@ -191,32 +192,33 @@ def generate_models(n_models=args.n, save=args.s, save_path=args.sp, types=args.
                         skew=skewness,
                     )
 
-                    try:
+                    #try:
             
-                        cnn.predict(modelname=modelname,times=time, fluxes=flux, errs=fluxerror)
-                        
-                        time = cnn.predict_time[0]
-                        flux = cnn.predict_flux[0]
-                        errs = cnn.predict_err[0]
-                        predictions = cnn.predictions[0]
+                    cnn.predict(modelname=modelname,times=time, fluxes=flux, errs=fluxerror)
                     
+                    time = cnn.predict_time[0]
+                    flux = cnn.predict_flux[0]
+                    errs = cnn.predict_err[0]
+                    predictions = cnn.predictions[0]
+                
 
-                        if save:
-                            cfolder = f"injected-skew_{skewness}-duration-{duration:.2f}-snr-{snr}"
-                            folder_path = os.path.join(save_path, cfolder)
-                            os.makedirs(folder_path, exist_ok=True)
-                            file_path = os.path.join(
-                                folder_path,
-                                f"exocomet_model_{lc_info['TIC_ID']}_sector07.npy",
-                            )
-                            np.save(file_path, np.array([time, flux, errs, predictions, model]))
+                    if save:
+                        cfolder = f"injected-skew_{skewness}-duration-{duration:.2f}-snr-{snr}"
+                        folder_path = os.path.join(save_path, cfolder)
+                        os.makedirs(folder_path, exist_ok=True)
+                        file_path = os.path.join(
+                            folder_path,
+                            f"exocomet_model_{lc_info['TIC_ID']}_sector07.npy",
+                        )
+                        np.save(file_path, np.array([time, flux, errs, predictions, model]))
                         
-                    except IndexError:
-                        print("cannot predict. moving on...")
+                    # except IndexError:
+                    #     print("cannot predict. moving on...")
 
                     id.append(lc_info["TIC_ID"])
 
-    catalogtime = np.full_like(time, 1496.5)
+    t = np.load("time-array-s7.npy")
+    catalogtime = np.full_like(t, 1496.5)
     # df = create_catalog(id, catalogtime)
 
 

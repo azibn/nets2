@@ -377,6 +377,8 @@ def split_data(
         )
 
     # First split: training and temp (validation + test)
+
+    ## IF VALIDATION 0 THEN END (ADD THIS IN)
     split_arrays = train_test_split(
         training_matrix,
         labels,
