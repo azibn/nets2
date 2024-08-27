@@ -716,7 +716,7 @@ class ConvNN(object):
         predictions = []
         pred_t, pred_f, pred_e = [], [], []
 
-        for j in tqdm(range(len(times))):
+        for j in range(len(times)):
             time = times[j] + 0.0
             lc = fluxes[j] / np.nanmedian(fluxes[j])  # MUST BE NORMALIZED
             err = errs[j] + 0.0
@@ -743,7 +743,7 @@ class ConvNN(object):
                 reshaped_data.shape[0], reshaped_data.shape[1], 1
             )
 
-            preds = model.predict(reshaped_data, verbose=0)
+            preds = model.predict(reshaped_data, verbose=0,batch_size=512)
             preds = np.reshape(preds, (len(preds),))
             predictions.append(preds)
 
