@@ -7,8 +7,8 @@ The CNN is built using the stella library and can be customized with various hyp
 
 import os
 import sys
-
-sys.path.insert(1, "/Users/azib/Documents/open_source/nets2/stella/")
+import pickle
+sys.path.insert(0, "/home/astro/phrdhx/nets2/stella/")
 import argparse
 import numpy as np
 import matplotlib.pyplot as plt
@@ -20,8 +20,12 @@ import optimise
 parser = argparse.ArgumentParser(
     description="Run a Convolutional Neural Network for exocomet detection. Enter your positional arguments as <path-to-directory> <path-to-catalog>."
 )
-parser.add_argument(help="Target directory", dest="path")
-parser.add_argument(help="catalog", dest="catalog")
+
+# Positional arguments
+parser.add_argument(help="Target directory", dest="path", nargs='?')
+parser.add_argument(help="catalog", dest="catalog", nargs='?')
+
+# Optional arguments
 parser.add_argument(
     "-c",
     "--cadences",
@@ -47,7 +51,7 @@ parser.add_argument(
     type=int,
     help="SEED(s) to use for CNN model. Default 42",
     dest="seed",
-)  # List to account for multiple SEEDs.
+)
 parser.add_argument(
     "-e",
     "--epochs",
@@ -63,14 +67,12 @@ parser.add_argument(
     type=int,
     dest="batch_size",
 )
-
 parser.add_argument(
     "--optimise",
     help="Optimise the hyperparameters.",
     action="store_true",
     dest="optimise",
 )
-
 parser.add_argument("--merge", nargs="+", help="Paths to additional datasets to merge")
 parser.add_argument(
     "--merge_catalogs",
@@ -78,7 +80,6 @@ parser.add_argument(
     help="Paths to catalogs for additional datasets",
     dest="merge_catalogs",
 )
-
 parser.add_argument(
     "--merge_labels",
     nargs="+",
@@ -86,7 +87,6 @@ parser.add_argument(
     dest="merge_labels",
     type=int,
 )
-
 parser.add_argument(
     "-fp",
     "--flip-portion",
@@ -95,6 +95,17 @@ parser.add_argument(
     type=float,
 )
 
+# Mutually exclusive group
+group = parser.add_mutually_exclusive_group()
+group.add_argument(
+    "-ld",
+    "--load-data",
+    help="Load a pre-defined dataset. Dataset must be in .pkl format.",
+    action="store_true",
+    dest="load_dataset"
+)
+
+args = parser.parse_args()
 
 def plot_metrics(cnn, seed):
     """
@@ -190,31 +201,36 @@ args = parser.parse_args()
 if __name__ == "__main__":
 
     # datasets = [dataset]
-    datasets = []
-    if args.merge:
-        for additional_dir, additional_catalog in zip(args.merge, args.merge_catalogs):
-            additional_dataset = create_dataset(
-                additional_dir,
-                additional_catalog,
-                args.c,
-                args.training,
-                args.validation,
-                frac_balance=1,
-            )
-            datasets.append(additional_dataset)
+    if args.load_dataset:
+        with open("ds.pkl", "rb") as file:
+            dataset = pickle.load(file)
+    
+    else:
+        datasets = []
+        if args.merge:
+            for additional_dir, additional_catalog in zip(args.merge, args.merge_catalogs):
+                additional_dataset = create_dataset(
+                    additional_dir,
+                    additional_catalog,
+                    args.c,
+                    args.training,
+                    args.validation,
+                    frac_balance=1,
+                )
+                datasets.append(additional_dataset)
 
-    dataset = stella.FlareDataSet(
-        args.path,
-        catalog=args.catalog,
-        merge_datasets=True,
-        other_datasets=datasets,
-        other_datasets_labels=args.merge_labels,  # change this so that this becomes a parser argumnet
-        cadences=args.c,
-        training=args.training,
-        validation=args.validation,
-        frac_balance=args.frac_balance,  ### REMOVED ALL NEGATIVE CLASSES OF THE MERGING DATASETS
-        augment_portion=0.3,  # make this a parser argument (default value is OK)
-    )
+        dataset = stella.FlareDataSet(
+            args.path,
+            catalog=args.catalog,
+            merge_datasets=True,
+            other_datasets=datasets,
+            other_datasets_labels=args.merge_labels,  # change this so that this becomes a parser argumnet
+            cadences=args.c,
+            training=args.training,
+            validation=args.validation,
+            frac_balance=args.frac_balance,  ### REMOVED ALL NEGATIVE CLASSES OF THE MERGING DATASETS
+            augment_portion=0.3,  # make this a parser argument (default value is OK)
+        )
 
     cnn = stella.ConvNN(
         output_dir="/Users/azib/Documents/open_source/nets2/cnn-models/",

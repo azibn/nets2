@@ -16,7 +16,7 @@ cnn-models*
 exo*/
 logs/
 notebooks/grant-test/
-
+outputs/
 
 ## stella stuff that i don't need
 docs/
