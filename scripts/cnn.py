@@ -8,11 +8,20 @@ The CNN is built using the stella library and can be customized with various hyp
 import os
 import sys
 import pickle
-sys.path.insert(0, "/home/astro/phrdhx/nets2/stella/")
 import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+
+current_dir = os.getcwd()
+while os.path.basename(current_dir) != 'nets2':
+    current_dir = os.path.dirname(current_dir)
+    if current_dir == os.path.dirname(current_dir): 
+        raise Exception("'nets2' directory not found in parent directories")
+    
+sys.path.insert(1, os.path.join(current_dir, 'scripts'))
+sys.path.insert(1, os.path.join(current_dir, 'stella'))
+
 import stella
 import optimise
 
@@ -232,8 +241,10 @@ if __name__ == "__main__":
             augment_portion=0.3,  # make this a parser argument (default value is OK)
         )
 
+    cnn_dir = os.path.join(os.getcwd(), 'cnn-models')
+
     cnn = stella.ConvNN(
-        output_dir="/Users/azib/Documents/open_source/nets2/cnn-models/",
+        output_dir=cnn_dir,
         ds=dataset,
     )  # ,layers=layers)
 

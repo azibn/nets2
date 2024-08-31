@@ -158,9 +158,9 @@ class ConvNN(object):
             filter1 = 16
             filter2 = 64
             dense = 32
-            dropout = 0.1
-            l2val = 0.0001
-            activation = 'leaky_relu'
+            dropout = 0.2
+            l2val = 0.001
+            activation = 'elu'
 
             # CONVOLUTIONAL LAYERS
             model.add(

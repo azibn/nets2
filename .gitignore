@@ -23,6 +23,7 @@ docs/
 figures/
 
 ## misc
+*.pkl
 __pycache__
 */__pycache__
 */*/__pycache__
