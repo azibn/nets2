@@ -9,9 +9,16 @@ import os
 import sys
 import pickle
 import argparse
+import keras
+import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+from scipy.stats import loguniform
+from sklearn.model_selection import RandomizedSearchCV
+from tensorflow.keras.regularizers import l2
+from scikeras.wrappers import KerasClassifier
+
 
 current_dir = os.getcwd()
 while os.path.basename(current_dir) != 'nets2':
@@ -24,6 +31,7 @@ sys.path.insert(1, os.path.join(current_dir, 'stella'))
 
 import stella
 import optimise
+os.nice(7)
 
 
 parser = argparse.ArgumentParser(
@@ -77,11 +85,20 @@ parser.add_argument(
     dest="batch_size",
 )
 parser.add_argument(
-    "--optimise",
-    help="Optimise the hyperparameters.",
+    "--optimise-bayes",
+    help="Optimise the hyperparameters using Bayesian optimisation.",
     action="store_true",
-    dest="optimise",
+    dest="optimise_bayes",
 )
+
+parser.add_argument(
+    "--optimise-RS",
+    help="Optimise the hyperparameters using RandomSearchCV.",
+    action="store_true",
+    dest="optimise_RS",
+)
+
+
 parser.add_argument("--merge", nargs="+", help="Paths to additional datasets to merge")
 parser.add_argument(
     "--merge_catalogs",
@@ -189,7 +206,7 @@ def plot_metrics(cnn, seed):
 
     plt.tight_layout()
     os.makedirs("plots/", exist_ok=True)
-    plt.savefig(f"plots/metrics-s{seed}-acc-opt.png", dpi=300)
+    plt.savefig(f"plots/metrics-s{seed}-optimised.png", dpi=300)
     plt.close()
 
 
@@ -203,6 +220,40 @@ def create_dataset(path, catalog, cadences, training, validation, frac_balance):
         frac_balance=frac_balance,
     )
 
+def model_RS(filter1, filter2, dense, dropout, learning_rate, kernel1, kernel2, pool, l2val):
+    model = keras.models.Sequential([
+        tf.keras.layers.Conv1D(
+            filters=filter1,
+            kernel_size=kernel1,
+            activation='elu',
+            padding="same",
+            input_shape=(args.c, 1),
+            kernel_regularizer=l2(l2val)
+        ),
+        tf.keras.layers.MaxPooling1D(pool_size=pool),
+        tf.keras.layers.Dropout(dropout),
+        tf.keras.layers.Conv1D(
+            filters=filter2,
+            kernel_size=kernel2,
+            activation='elu',
+            padding="same",
+            kernel_regularizer=l2(l2val)
+        ),
+        tf.keras.layers.MaxPooling1D(pool_size=pool),
+        tf.keras.layers.Dropout(dropout),
+        tf.keras.layers.Flatten(),
+        tf.keras.layers.Dense(dense, activation='elu'),
+        tf.keras.layers.Dropout(dropout),
+        tf.keras.layers.Dense(1, activation="sigmoid")
+    ])
+    
+    optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+    model.compile(
+        optimizer=optimizer,
+        loss='binary_crossentropy',
+        metrics=["accuracy", tf.keras.metrics.Precision(), tf.keras.metrics.Recall()]
+    )
+    return model
 
 args = parser.parse_args()
 
@@ -261,7 +312,7 @@ if __name__ == "__main__":
 
     if (decision == "y") or (decision == "yes"):
         for seed in args.seed:
-            if args.optimise:
+            if args.optimise_bayes:
                 print("Selected optimising hyperparameters...")
                 best_params = optimise.optimise_hyperparameters(
                     cnn, n_trials=100
@@ -273,6 +324,27 @@ if __name__ == "__main__":
                 cnn.train_models(
                     seeds=seed, epochs=args.e, batch_size=args.batch_size, shuffle=True
                 )
+
+            elif args.optimise_RS:
+                    print("Using RandomSearchCV to optimise hyperparameters...")
+
+                    model = KerasClassifier(build_fn=model_RS, epochs=150, batch_size=128, verbose=0)
+
+                    param_dist = {
+                    'kernel1': [7, 9, 11, 13, 15],
+                    'kernel2': [3, 5, 7],
+                    'pool': [2, 3, 4, 5],
+                    'filter1': [16, 32, 64, 128, 256, 512],
+                    'filter2': [64, 128, 256, 512, 1024],
+                    'dense': [32, 64, 128, 256, 512],
+                    'dropout': [0.2, 0.3, 0.4, 0.5],
+                    'l2val': loguniform(0.001, 0.01)
+                }
+
+                    random_search = RandomizedSearchCV(estimator=model, param_distributions=param_dist, n_iter=100, cv=5, verbose=2, n_jobs=33)
+                    random_search_result = random_search.fit(dataset.train_data, dataset.train_labels)
+                    best_params = random_search_result.best_params_
+                    print("Best parameters found: ", best_params)
 
             else:
                 cnn.train_models(

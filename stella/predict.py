@@ -2,6 +2,7 @@ import sys
 import os
 import pickle
 import glob
+import time
 import argparse
 import numpy as np
 import stella
@@ -119,6 +120,8 @@ def load_predictions(file_path):
 
 
 if __name__ == "__main__":
+
+    start_time = time.time() 
     with open("ds.pkl", "rb") as file:
         ds = pickle.load(file)
 
@@ -182,7 +185,8 @@ if __name__ == "__main__":
                 print("File not found")
                 continue
 
-    # with open(args.o, 'wb') as file:
-    #     pickle.dump({'ID':id,'time':pred_t,'pred':pred},file)
+    end_time = time.time()  
+    elapsed_time = (end_time - start_time) / 60  
+    print(f"Script executed in {elapsed_time:.2f} minutes")  
 
     sys.exit(0)

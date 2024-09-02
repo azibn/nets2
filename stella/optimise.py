@@ -1,16 +1,16 @@
 import tensorflow as tf
 import optuna
-
+import multiprocessing  
 
 def objective(trial, cnn_instance):
     # HYPERPARAMETERS TO TUNE
-    filter1 = trial.suggest_int("filter1", 8, 64)
+    filter1 = trial.suggest_int("filter1", 8, 256)
     filter2 = trial.suggest_int("filter2", 32, 128)
-    dense = trial.suggest_int("dense", 16, 64)
+    dense = trial.suggest_int("dense", 16, 256)
     dropout = trial.suggest_float("dropout", 0.1, 0.5)
     learning_rate = trial.suggest_float("learning_rate", 0.001,0.01, log=True)
 
-    kernel_size1 = trial.suggest_int("kernel_size1", 3, 11, step=2)
+    kernel_size1 = trial.suggest_int("kernel_size1", 3, 17, step=2)
     kernel_size2 = trial.suggest_int(
         "kernel_size2", 3, kernel_size1, step=2
     )  # MUST BE SMALLER THAN KERNEL_SIZE1
@@ -64,17 +64,17 @@ def objective(trial, cnn_instance):
     return history.history["val_accuracy"][-1]
 
 
-def optimise_hyperparameters(cnn_instance, n_trials=10):
+def optimise_hyperparameters(cnn_instance, n_trials=200):
     storage = "sqlite:///optuna_study.db"
 
     # Create the study
     study = optuna.create_study(
         direction="maximize",
         storage=storage,
-        study_name="cnn_optimisation_v2",
+        study_name="cnn_optimisation_v3",
         load_if_exists=True,
     )
-    study.optimize(lambda trial: objective(trial, cnn_instance), n_trials=n_trials,n_jobs=1)
+    study.optimize(lambda trial: objective(trial, cnn_instance), n_trials=n_trials,n_jobs=int(multiprocessing.cpu_count()/2))
 
     print("Best trial:")
     trial = study.best_trial

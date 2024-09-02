@@ -688,8 +688,7 @@ class ConvNN(object):
                 # bad_inds = np.append(
                 #     bad_inds, np.arange(b - cad_pad, b + cad_pad, 1, dtype=int)
                 # )
-
-            bad_inds = np.unique(bad_inds)
+            #bad_inds = np.unique(bad_inds)
             bad_inds = np.sort(bad_inds)
             # Ensure all indices are within bounds
             bad_inds = bad_inds[(bad_inds >= 0) & (bad_inds < len(t))]
