@@ -6,8 +6,18 @@ import time
 import argparse
 import numpy as np
 import stella
-sys.path.insert(1, "/home/astro/phrdhx/nets2/stella")
-sys.path.insert(0, "/home/astro/phrdhx/nets2/scripts")
+
+
+current_dir = os.getcwd()
+while os.path.basename(current_dir) != 'nets2':
+    current_dir = os.path.dirname(current_dir)
+    if current_dir == os.path.dirname(current_dir): 
+        raise Exception("'nets2' directory not found in parent directories")
+    
+sys.path.insert(1, os.path.join(current_dir, 'scripts'))
+sys.path.insert(1, os.path.join(current_dir, 'stella'))
+
+
 from tensorflow import keras
 from utils import *
 os.nice(7)
