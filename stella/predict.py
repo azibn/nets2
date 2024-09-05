@@ -6,6 +6,16 @@ import time
 import argparse
 import numpy as np
 import stella
+import concurrent.futures
+import multiprocessing
+from tqdm import tqdm
+from itertools import islice
+import gc
+import cProfile
+import pstats
+import io
+from memory_profiler import profile
+
 
 
 current_dir = os.getcwd()
@@ -18,14 +28,22 @@ sys.path.insert(1, os.path.join(current_dir, 'scripts'))
 sys.path.insert(1, os.path.join(current_dir, 'stella'))
 
 
-from tensorflow import keras
 from utils import *
-os.nice(7)
+os.nice(17)
+
+# config = tf.compat.v1.ConfigProto(
+#     intra_op_parallelism_threads=40,  # Parallelism within individual operations
+#     inter_op_parallelism_threads=2    # Parallelism between independent operations
+# )
+
+# # Create a session with the above configuration
+# session = tf.compat.v1.Session(config=config)
+# tf.compat.v1.keras.backend.set_session(session)
 
 
 parser = argparse.ArgumentParser(description="Predict CNN on lightcurve data")
 parser.add_argument(help="Target directory of lightcurves", dest="path")
-parser.add_argument("-m", "--model", type=str, help="Path to model")
+parser.add_argument("-m", "--model", type=str, help="Path to CNN model directory. Assumes models are in its own directory.", dest="model")
 parser.add_argument(
     "-o",
     "--output",
@@ -50,6 +68,7 @@ parser.add_argument(
     default=0.7,
 )
 
+parser.add_argument('-t', '--threads', type=int, help='Number of threads to use', default=20, dest='threads')
 
 args = parser.parse_args()
 
@@ -73,34 +92,73 @@ PIPELINE = {
     # Add more pipeline configurations as needed
 }
 
+#@profile
+def process_single_lightcurve(args):
+    lc_path, pipeline, models, threshold = args
+    try:
+        source_id, time, flux, flux_error = process_lightcurve(lc_path, pipeline)
+        cnn = stella.ConvNN(output_dir=f"{os.path.join(current_dir)}/cnn-models/", ds=ds)
 
-def load_model(cnn, model):
-    return cnn.load_model(model)
+        preds = np.zeros((len(models), len(time)))  
+        for i, model in enumerate(models):
+            try:
+                cnn.predict(modelname=model, times=time, fluxes=flux, errs=flux_error)
+                preds[i] = cnn.predictions[0]
+            except ValueError:
+                print("Error predicting lightcurve: empty.")
+                preds[i] = np.nan
+
+        avg_pred = np.nanmedian(preds, axis=0)
+        arg = np.argmax(avg_pred)
+        pred = avg_pred[arg]
+        t_pred = cnn.predict_time[0][arg]
+        is_interesting = 1 if pred > threshold else 0
+
+        results = {
+            "ID": source_id,
+            "t_pred": t_pred,
+            "pred": pred,
+            "is_interesting": is_interesting,
+        }
+
+        if is_interesting:
+            results["time"] = time
+            results["flux"] = flux
+            results["predictions"] = avg_pred
+
+        del time, flux, flux_error, preds, avg_pred, 
+        gc.collect()
+        return results
+
+    except FileNotFoundError:
+        print("File not found")
+        return None
 
 
-def load_lightcurves(path):
-    print("globbing files")
-    return glob.glob(f"{path}/**/*.fits", recursive=True)
-
+def find_models(path):
+    """
+    Returns the CNN model(s) as a list of paths.
+    If path is a directory, it globs for .h5 files.
+    If path is a file, it returns a list with that single file.
+    """
+    if os.path.isdir(path):
+        return glob.glob(f"{path}/*.h5")
+    elif os.path.isfile(path) and path.endswith('.h5'):
+        return [path]
+    else:
+        return
 
 def process_lightcurve(path, pipeline):
     lc, info = import_lightcurve(path)
 
-    # def get_column(lc, primary, fallback):
-    #     """Fallback option if primary column is not found as e.g: some SPOC lightcurves
-    #     do not have a PDCSAP."""
-    #     return np.array(lc[primary] if primary in lc.columns else lc[fallback])
 
-    # Use the function to get the columns
-    # time = get_column(lc, pipeline['time'], 'TIME')
-    # flux = get_column(lc, pipeline['flux'], 'FLUX')
-    # flux_error = get_column(lc, pipeline['flux_err'], 'FLUX_ERR')
     time, flux, flux_error = (
         lc[pipeline["time"]],
         lc[pipeline["flux"]],
         lc[pipeline["flux_err"]],
     )
     time, flux, flux_error = scale_lightcurve(time, flux, flux_error)
+    del lc
     return info[pipeline["id"]], time, flux, flux_error
 
 
@@ -113,7 +171,7 @@ def scale_lightcurve(time, flux, flux_error):
     flux_error = flux_error[mask]
 
     f = (f - np.min(f)) / (np.max(f) - np.min(f))
-
+    del mask
     return t, f, flux_error
 
 
@@ -128,75 +186,58 @@ def load_predictions(file_path):
                 break
     return data
 
+def load_lightcurves_generator(path):
+    for file in glob.glob(f"{path}/**/*.fits", recursive=True):
+        yield file
 
-if __name__ == "__main__":
+def process_batch(batch_args):
+    return [process_single_lightcurve(args) for args in batch_args]
 
-    start_time = time.time() 
-    with open("ds.pkl", "rb") as file:
-        ds = pickle.load(file)
+from concurrent.futures import ProcessPoolExecutor
 
-    cnn = stella.ConvNN(
-        output_dir="/Users/azib/Documents/open_source/nets2/cnn-models/", ds=ds
-    )
-    load_model(cnn, args.model)
+def main(ds):
+    start_time = time.time()
 
-    lightcurves = load_lightcurves(args.path)
-    pred_t = []
-    pred = []
-
+    lightcurves = load_lightcurves_generator(args.path)
     pipeline = PIPELINE[args.p]
     print("Lightcurve data product: ", pipeline)
 
-    with open(args.o, "ab") as file:
-        for lc in lightcurves:
+    models = find_models(args.model)
 
-            try:
-                source_id, time, flux, flux_error = process_lightcurve(lc, pipeline)
+  
+    total_results = 0
+    with open(args.o, "ab") as output_file:
+        with multiprocessing.Pool(processes=args.threads) as pool:
+            # Create an iterator of arguments for each lightcurve
+            lc_args = ((lc, pipeline, models, args.threshold) for lc in lightcurves)
+            
+            # Process lightcurves in parallel with a dynamic progress bar
+            pbar = tqdm(desc="Processing lightcurves", unit=" lightcurves")
+            for result in pool.imap_unordered(process_single_lightcurve, lc_args):
+                if result is not None:
+                    pickle.dump(result, output_file)
+                    output_file.flush()
+                    total_results += 1
+                pbar.update(1)
+            pbar.close()
 
-                try:
-                    cnn.predict(
-                        modelname=args.model, times=time, fluxes=flux, errs=flux_error
-                    )
-                except ValueError:
-                    print("Error predicting lightcurve: empty.")
-                    continue
+    print(f"Total results processed: {total_results}")
 
-                arg = np.argmax(cnn.predictions[0])
+    end_time = time.time()
+    elapsed_time = (end_time - start_time) / 60
+    print(f"Script executed in {elapsed_time:.2f} minutes")
 
-                #### THIS SAVES ONLY THE HIGHEST PREDICTION, NOT THE WHOLE ARRAY
-                # pred.append(cnn.predictions[0][arg])
-                # pred_t.append(cnn.predict_time[0][arg])
+if __name__ == '__main__':
+    with open("ds.pkl", "rb") as file:
+        ds = pickle.load(file)
+    main(ds)
+    sys.exit(0)
 
-                pred = cnn.predictions[0][arg]
-                t_pred = cnn.predict_time[0][arg]
+if __name__ == '__main__':
+    with open("ds.pkl", "rb") as file:
+        ds = pickle.load(file)
 
-                # Determine if this prediction is interesting
-                is_interesting = 1 if pred > args.threshold else 0
-
-                # Store data as a dictionary
-                results = {
-                    "ID": source_id,
-                    "t_pred": t_pred,
-                    "pred": pred,
-                    "is_interesting": is_interesting,
-                }
-
-                # Include full time and flux arrays only if the prediction is interesting
-                if is_interesting:
-                    results["time"] = np.array(time)
-                    results["flux"] = np.array(flux)
-                    results["predictions"] = np.array(cnn.predictions[0])
-
-                # Save the prediction data directly to the pickle file
-                pickle.dump(results, file)
-                del source_id, time, flux, flux_error, pred, t_pred
-
-            except FileNotFoundError:
-                print("File not found")
-                continue
-
-    end_time = time.time()  
-    elapsed_time = (end_time - start_time) / 60  
-    print(f"Script executed in {elapsed_time:.2f} minutes")  
-
+    
+    main(ds)
+    
     sys.exit(0)
