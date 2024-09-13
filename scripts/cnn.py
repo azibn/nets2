@@ -18,8 +18,7 @@ from scipy.stats import loguniform
 from sklearn.model_selection import RandomizedSearchCV
 from tensorflow.keras.regularizers import l2
 from scikeras.wrappers import KerasClassifier
-
-
+#sys.path.insert(1, '/home/astro/phrdhx/nets2/stella')
 current_dir = os.getcwd()
 while os.path.basename(current_dir) != 'nets2':
     current_dir = os.path.dirname(current_dir)

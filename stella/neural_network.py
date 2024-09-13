@@ -12,6 +12,16 @@ from keras.utils import to_categorical
 from tensorflow.keras.callbacks import TensorBoard, EarlyStopping, ReduceLROnPlateau
 from tensorflow.keras.regularizers import l2
 
+import multiprocessing as mp
+
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+os.environ['MKL_NUM_THREADS'] = '1'
+os.environ['VECLIB_MAXIMUM_THREADS'] = '1'
+os.environ['NUMEXPR_NUM_THREADS'] = '1'
+os.environ['OMP_NUM_THREADS'] = '1'
+tf.config.threading.set_inter_op_parallelism_threads(1)
+tf.config.threading.set_intra_op_parallelism_threads(1)
+
 
 __all__ = ["ConvNN"]
 

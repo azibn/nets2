@@ -18,6 +18,8 @@ stella/mark_flares.py
 stella/metrics.py
 stella/neural_network.py
 stella/optimise.py
+stella/predict-multiprocessing.py
+stella/predict-singlecore.py
 stella/predict.py
 stella/preprocessing_flares.py
 stella/rotations.py

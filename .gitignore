@@ -17,6 +17,7 @@ exo*/
 logs/
 notebooks/grant-test/
 outputs/
+test-lcs
 
 ## stella stuff that i don't need
 docs/
