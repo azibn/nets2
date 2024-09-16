@@ -83,6 +83,14 @@ parser.add_argument(
     dest="threads",
 )
 
+parser.add_argument(
+    "-d",
+    "--dataset",
+    help="The dataset used in training, in .pkl form.",
+    default="dsv2.pkl",
+    dest="ds",
+)
+
 args = parser.parse_args()
 
 ### PIPELINE OPTIONS
@@ -259,7 +267,7 @@ def main():
 
 
 if __name__ == "__main__":
-    with open("ds.pkl", "rb") as file:
+    with open(args.ds, "rb") as file:
         ds = pickle.load(file)
 
     pr = cProfile.Profile()
