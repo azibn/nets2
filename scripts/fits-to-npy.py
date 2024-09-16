@@ -36,8 +36,25 @@ def fits_to_npy(file):
     time = np.array(lc['TIME'])
     flux = np.array(lc['PCA_FLUX'])
     flux_err = np.array(lc['FLUX_ERR'])
-    t0 = np.random.uniform(lc['TIME'][0],lc['TIME'][-1])
-    return time, flux, flux_err, lc_info['TIC_ID'], t0
+
+    #### MADE TWO RANDOM TIMES FOR SVC IN MIDDLE OF THE REAL DATA BITS
+    t0 = np.random.uniform(lc['TIME'][0]+2,lc['TIME'][0] + 7)
+    t2 = np.random.uniform(lc['TIME'][-1] - 7,lc['TIME'][-1]-2)
+    q = np.array(lc['QUALITY']) 
+    return time, flux, flux_err, lc_info['TIC_ID'], q, t0, t2
+
+def scale_lightcurve(time, flux, flux_error):
+    # Calculate the scaled flux
+    f = np.array((flux / np.nanmedian(flux)) - 1)
+    mask = ~np.isnan(flux)
+    t = time[mask]
+    f = f[mask]
+    flux_error = flux_error[mask]
+
+    f = (f - np.min(f)) / (np.max(f) - np.min(f))
+    del mask
+    return t, f, flux_error
+
 
 def convert_fits_to_npy(fits_dir, npy_dir):
     os.makedirs(npy_dir, exist_ok=True)
@@ -45,10 +62,12 @@ def convert_fits_to_npy(fits_dir, npy_dir):
     tics = []
     for file in tqdm.tqdm(os.listdir(fits_dir)):
         if file.endswith('.fits'):
-            time, flux, flux_err, tic, _ = fits_to_npy(os.path.join(fits_dir, file))
-            np.save(os.path.join(args.npy_dir,f'{tic}_sector07.npy'), [time, flux, flux_err])
-            t0 = 1513
+            time, flux, flux_err, tic, q, t0, t2 = fits_to_npy(os.path.join(fits_dir, file))
+            time, flux, flux_err = scale_lightcurve(time, flux, flux_err)
+            np.save(os.path.join(args.npy_dir,f'{tic}_sector07.npy'), [time, flux, flux_err, q])
             times.append(t0)
+            times.append(t2)
+            tics.append(tic)
             tics.append(tic)
 
 

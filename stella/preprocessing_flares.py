@@ -6,6 +6,7 @@ from scipy.interpolate import interp1d
 import re
 import inspect
 import random
+import pickle
 
 from .utils import break_rest, do_the_shuffle, split_data
 
@@ -528,3 +529,8 @@ class FlareDataSet(object):
             )
         except ZeroDivisionError:
             print("No second class to calculate imbalance.")
+
+    def save(self,output='ds.pkl'):
+        """Save the FlareDataSet instance to a file."""
+        with open(output, 'wb') as f:
+            pickle.dump(self, f)

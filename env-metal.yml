@@ -33,6 +33,7 @@ dependencies:
     - lxml
     - memory-profiler
     - optuna-dashboard
+    - scikeras
     - tensorflow-macos
     - tensorflow-metal
     - wotan

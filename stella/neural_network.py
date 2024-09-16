@@ -170,7 +170,7 @@ class ConvNN(object):
             dense = 32
             dropout = 0.2
             l2val = 0.001
-            activation = 'elu'
+            activation = 'relu'
 
             # CONVOLUTIONAL LAYERS
             model.add(
