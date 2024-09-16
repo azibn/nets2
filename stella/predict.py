@@ -22,15 +22,9 @@ while os.path.basename(current_dir) != "nets2":
     current_dir = os.path.dirname(current_dir)
     if current_dir == os.path.dirname(current_dir):
         raise Exception("'nets2' directory not found in parent directories")
-<<<<<<< Updated upstream
-    
-sys.path.insert(0, os.path.join(current_dir, 'scripts'))
-sys.path.insert(1, os.path.join(current_dir, 'stella'))
-=======
 
 sys.path.insert(1, os.path.join(current_dir, "scripts"))
 sys.path.insert(1, os.path.join(current_dir, "stella"))
->>>>>>> Stashed changes
 
 
 from utils import *
