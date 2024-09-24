@@ -260,7 +260,8 @@ def main():
         pool.join()
 
     print(f"Total results processed: {total_results}")
-
+    pool.close()
+    pool.join()
     end_time = time.time()
     elapsed_time = (end_time - start_time) / 60
     print(f"Script executed in {elapsed_time:.2f} minutes")

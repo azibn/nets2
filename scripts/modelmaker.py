@@ -16,11 +16,19 @@ import wotan
 import batman
 import astropy.constants as const
 from scipy.stats import skewnorm
+
 import models
 
 
-sys.path.insert(1, "/Users/azib/Documents/open_source/nets2/stella/")
-sys.path.insert(1, "/Users/azib/Documents/open_source/nets2/scripts/")
+current_dir = os.getcwd()
+while os.path.basename(current_dir) != 'nets2':
+    current_dir = os.path.dirname(current_dir)
+    if current_dir == os.path.dirname(current_dir): 
+        raise Exception("'nets2' directory not found in parent directories")
+    
+sys.path.insert(1, os.path.join(current_dir, 'scripts'))
+sys.path.insert(1, os.path.join(current_dir, 'stella'))
+
 from utils import *
 
 
@@ -316,7 +324,7 @@ def exoplanet(
     r_star=1,
     max_retries=50,
     retry_delay=1,
-    timeout_duration=30,
+    timeout_duration=2,
     binary=False,
 ):
 
@@ -384,14 +392,14 @@ def exoplanet(
                 ),
             )
 
-            return {
-                "t0": params.t0,
-                "tic_id": lc["lc_info"]["TIC_ID"],
-                "time": lc["time"][lc["real"] == 1],
-                "injected_flux": injected_flux[lc["real"] == 1],
-                "fluxerror": fluxerror[lc["real"] == 1],
-                "period": params.per,
-            }
+            # return {
+            #     "t0": params.t0,
+            #     "tic_id": lc["lc_info"]["TIC_ID"],
+            #     "time": lc["time"][lc["real"] == 1],
+            #     "injected_flux": injected_flux[lc["real"] == 1],
+            #     "fluxerror": fluxerror[lc["real"] == 1],
+            #     "period": params.per,
+            # }
 
         except Exception as e:
             retries += 1
@@ -429,14 +437,14 @@ def main(args):
     for target_ID in tqdm(files[0 : args.number]):
 
         if args.transit in model_functions:
-            try:
-                tic_id, time, snrs, rms = model_functions[args.transit](target_ID)
-                tic.append(tic_id)
-                times.append(time)
-                snr_cat.append(snrs)
-                rms_cat.append(rms)
-            except Exception as e:
-                failed_ids.append(target_ID)
+            #try:
+            tic_id, time, snrs, rms = model_functions[args.transit](target_ID)
+            tic.append(tic_id)
+            times.append(time)
+            snr_cat.append(snrs)
+            rms_cat.append(rms)
+            #except Exception as e:
+            #    failed_ids.append(target_ID)
 
     data = pd.DataFrame(data=[tic, times, snr_cat, rms_cat]).T
     data.columns = ["TIC", "tpeak", "SNR", "RMS"]
