@@ -84,7 +84,7 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "-d",
+    "-ds",
     "--dataset",
     help="The dataset used in training, in .pkl form.",
     default="dsv2.pkl",
