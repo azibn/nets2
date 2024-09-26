@@ -1,20 +1,30 @@
 # nets2 
 
 ## exocomet models
+272-candidates-npy/
 data/
 models/
+catalogs/
+notebooks/binaries-catalog-s7-new.txt
+optuna_study.db
 
 ## folders
 plots*
 notebooks/*.png
-cnn-models-stable/
+cnn-models*
 *.png
+exo*/
+logs/
+notebooks/grant-test/
+outputs/
+test-lcs
 
 ## stella stuff that i don't need
 docs/
 figures/
 
 ## misc
+*.pkl
 __pycache__
 */__pycache__
 */*/__pycache__
@@ -37,3 +47,7 @@ dist
 asu2.tsv
 binary_catalog_prsa.csv
 notebooks/.png
+.gitignore.swp
+catalog.txt
+output.prof
+time-array-s7.npy

@@ -6,6 +6,7 @@ from scipy.interpolate import interp1d
 import re
 import inspect
 import random
+import pickle
 
 from .utils import break_rest, do_the_shuffle, split_data
 
@@ -36,7 +37,7 @@ class FlareDataSet(object):
         catalog=None,
         downloadSet=None,
         additional_dirs=None,
-        cadences=200,
+        cadences=168,
         frac_balance=0.73,
         training=0.80,
         validation=0.10,
@@ -45,6 +46,7 @@ class FlareDataSet(object):
         other_datasets=None,
         other_datasets_labels=None,
         num_subset=None,
+        augment_portion=None,
     ):
         """
         Loads in time, flux, flux error data. Reshapes
@@ -88,6 +90,10 @@ class FlareDataSet(object):
              The datasets to merge into the current FlareDataSet.
         num_subset: int, optional
              Select a subset of positive class data if you do not want to use the entire catalog.
+        augment_portion: float, optional
+             Augments a portion of the positive class and assigns them as part of the negative class.
+             Important if the shape is a characteristic (such as exocomets).
+
 
 
         """
@@ -115,6 +121,8 @@ class FlareDataSet(object):
 
         if merge_datasets == True:
             self.merge(other_datasets, labels=other_datasets_labels)
+        
+
 
         misc = split_data(
             self.labels,
@@ -125,20 +133,20 @@ class FlareDataSet(object):
             validation,
             self.original_labels,
         )
-     
 
         if self.num_subset:
             subset_data = self.subsets(num_subset=self.num_subset)
             for attr, value in subset_data.items():
                 setattr(self, attr, value)
-            misc = split_data(self.labels,
-            self.training_matrix,
-            self.training_ids,
-            self.training_peaks,
-            training,
-            validation,
-            self.original_labels,
-          )
+            misc = split_data(
+                self.labels,
+                self.training_matrix,
+                self.training_ids,
+                self.training_peaks,
+                training,
+                validation,
+                self.original_labels,
+            )
 
         self.train_data = misc[0]
         self.train_labels = misc[1]
@@ -154,8 +162,12 @@ class FlareDataSet(object):
         self.test_ids = misc[8]
         self.test_tpeaks = misc[9]
 
-        self.val_labels_ori = misc[10]
+        self.train_labels_ori = misc[10]
+        self.val_labels_ori = misc[11]
+        self.test_labels_ori = misc[12]
 
+        self.flip_exocomets(portion=augment_portion)
+        self.print_properly(portion=augment_portion)
 
     def load_files(
         self,
@@ -357,7 +369,7 @@ class FlareDataSet(object):
         self.training_ids = ids
         self.training_matrix = matrix
 
-    def merge(self, other, set_to_negative=False, labels=0):
+    def merge(self, other, labels=0):
         """Merge one FlareDataSet instance into this one.
 
         other: your other FlareDataSet instances.
@@ -367,35 +379,40 @@ class FlareDataSet(object):
         """
         ### READS IN DATASETS (IF MULTIPLE, THIS IS HANDLED TOO)
         for i, o in enumerate(other):
-          if labels != 0:
-               o.original_labels[:] = labels[i]
-          o.labels[:] = 0
+            if labels != 0:
 
-          #   elif set_to_negative:
-          #       o.labels[:] = 0
+                if isinstance(labels, (list, np.ndarray)):
+                    current_label = labels[i]
+                else:
+                    current_label = labels
+                
+                o.original_labels[:] = current_label
+                
+                if current_label != 1:
+                    o.labels[:] = 0
 
-          # Merge 'other' into 'self'
 
-          self.training_matrix = np.concatenate(
-               [self.training_matrix, o.training_matrix]
-          )
-          self.labels = np.concatenate([self.labels, o.labels])
-          self.original_labels = np.concatenate(
-               [self.original_labels, o.original_labels]
-          )
-          self.training_ids = np.concatenate([self.training_ids, o.training_ids])
-          self.training_peaks = np.concatenate(
-               [self.training_peaks, o.training_peaks]
-          )
+            self.training_matrix = np.concatenate(
+                [self.training_matrix, o.training_matrix]
+            )
+            self.labels = np.concatenate([self.labels, o.labels])
+            self.original_labels = np.concatenate(
+                [self.original_labels, o.original_labels]
+            )
+            self.training_ids = np.concatenate([self.training_ids, o.training_ids])
+            self.training_peaks = np.concatenate(
+                [self.training_peaks, o.training_peaks]
+            )
 
-          self.ids = np.concatenate([self.ids, o.ids])
-          self.time = np.concatenate([self.time, o.time], axis=0)
-          self.flux = np.concatenate([self.flux, o.flux], axis=0)
-          self.flux_err = np.concatenate([self.flux_err, o.flux_err], axis=0)
-          self.real = np.concatenate([self.real, o.real], axis=0)
+            self.ids = np.concatenate([self.ids, o.ids])
+            self.time = np.concatenate([self.time, o.time], axis=0)
+            self.flux = np.concatenate([self.flux, o.flux], axis=0)
+            self.flux_err = np.concatenate([self.flux_err, o.flux_err], axis=0)
+            self.real = np.concatenate([self.real, o.real], axis=0)
 
-               ### NOTE: TPEAKS IS NOT CONCATENATED HERE.
-    
+            ### NOTE: TPEAKS IS NOT CONCATENATED HERE.
+
+
 
     def subsets(self, num_subset):
         """Returns subset of positive class"""
@@ -419,9 +436,101 @@ class FlareDataSet(object):
                 "training_peaks",
             ]
             for attr in attributes:
-               attr_len = len(getattr(self, attr))
-               print(f"Length of {attr}: {attr_len}")
+                attr_len = len(getattr(self, attr))
+                print(f"Length of {attr}: {attr_len}")
         return {
             attribute: getattr(self, attribute)[random_indices]
             for attribute in attributes
         }
+
+    def flip_exocomets(self, portion=None):
+        """Function to augment a portion of the positive class data by flipping the exocomet transits to get a 'reverse' exocomet shape.
+        If no portion is specified, then the default portion will be assigned as the entire positive class.
+
+        Parameters:
+        ------------
+        portion: float, optional
+            The portion of the positive class data to flip. Default is None.
+
+
+
+        """
+        ind_pc = np.where(self.train_labels == 1)[0]
+        val_pc = np.where(self.val_labels == 1)[0]
+
+        if portion is None:
+            return
+        else:
+            portion_tr = int(len(ind_pc) * portion)
+            portion_val = int(len(val_pc) * portion)
+
+            flip_ind = np.random.choice(ind_pc, size=portion_tr, replace=False)
+            #flip_ind_val = np.random.choice(val_pc, size=portion_val, replace=False)
+
+            flipped_data = [self.train_data[i][::-1] for i in flip_ind]
+            #flipped_data_val = [self.val_data[i][::-1] for i in flip_ind_val]
+            # flipped_labels = np.zeros(len(flipped_data))
+
+            flipped_labels = np.zeros(len(flipped_data))
+            #flipped_labels_val = np.zeros(len(flipped_data_val))
+            flipped_labels_ori = np.full(shape=(len(flipped_data),), fill_value=0)
+            #flipped_labels_ori_val = np.full(shape=(len(flipped_data_val),), fill_value=0)
+
+            self.train_data = np.concatenate((self.train_data, flipped_data), axis=0)
+            self.train_labels = np.concatenate((self.train_labels, flipped_labels), axis=0)
+            self.train_labels_ori = np.concatenate(
+                (self.train_labels_ori, flipped_labels_ori), axis=0
+            )
+
+            # self.val_data = np.concatenate((self.val_data, flipped_data_val), axis=0)
+            # self.val_labels = np.concatenate((self.val_labels, flipped_labels_val), axis=0)
+            # self.val_labels_ori = np.concatenate(
+            #     (self.val_labels_ori, flipped_labels_ori_val), axis=0
+            # )
+
+
+
+    def print_properly(self, portion=None):
+        ind_pc = np.where(self.train_labels == 1)
+        ind_nc = np.where(self.train_labels != 1)
+        print(f"Number of positive class training data: {len(ind_pc[0])}")
+        print(f"Number of negative class training data: {len(ind_nc[0])}")
+
+        val_pc = np.where(self.val_labels == 1)
+        val_nc = np.where(self.val_labels != 1)
+        print(f"Number of positive class validation data: {len(val_pc[0])}")
+        print(f"Number of negative class validation data: {len(val_nc[0])}")
+
+        ### SORT THIS BIT OUT
+        if portion is not None:
+            print(
+                f"Size of augmented data (training set only): {int(len(ind_pc[0]) * portion)}"
+            )
+        else:
+            print(f"Size of augmented data (training set only): 0")
+
+        # I need to change original labels to original labels, original train labels and original val labels
+        unique_train, counts_train = np.unique(self.train_labels, return_counts=True)
+        unique_val, counts_val = np.unique(self.val_labels_ori, return_counts=True)
+
+        for value, count in zip(unique_train, counts_train):
+            print(f"Class label (training): {value}, Count: {count}")
+
+        for value, count in zip(unique_val, counts_val):
+            print(f"Class label (validation): {value}, Count: {count}")
+
+        print(f"Total size of training set: {len(self.train_data)}")
+        print(f"Total size of validation set: {len(self.val_data)}")
+        print(f"Total size of test set: {len(self.test_data)}")
+
+        try:
+            print(
+                f"Approximate class imbalance: {np.round(100 * (1 - len(ind_pc[0]) / len(ind_nc[0])))}"
+            )
+        except ZeroDivisionError:
+            print("No second class to calculate imbalance.")
+
+    def save(self,output='ds.pkl'):
+        """Save the FlareDataSet instance to a file."""
+        with open(output, 'wb') as f:
+            pickle.dump(self, f)

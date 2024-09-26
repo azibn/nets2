@@ -2,7 +2,8 @@ import numpy as np
 from astropy import units as uni
 from scipy.interpolate import interp1d
 from sklearn.model_selection import train_test_split
-
+from astropy.io import fits
+from astropy.table import Table
 
 def flare_lightcurve(time, t0, amp, rise, fall, y=None):
     """
@@ -244,20 +245,19 @@ def do_the_shuffle(training_matrix, labels, training_other, training_ids, frac_b
 
     ind_pc = np.where(newlabels == 1)
     ind_nc = np.where(newlabels != 1)
-    print("{} positive classes".format(len(ind_pc[0])))
-    print("{} negative classes".format(len(ind_nc[0])))
-    try:
-        print(
-            "{}% class imbalance\n".format(
-                np.round(100 * len(ind_pc[0]) / len(ind_nc[0]))
-            )
-        )
-    except ZeroDivisionError:
-        print("Division by zero error. Cannot calculate class imbalance.")
-        pass
+    # print("{} positive classes".format(len(ind_pc[0])))
+    # print("{} negative classes".format(len(ind_nc[0])))
+    # try:
+    #     print(
+    #         "{}% class imbalance\n".format(
+    #             np.round(100 * len(ind_pc[0]) / len(ind_nc[0]))
+    #         )
+    #     )
+    # except ZeroDivisionError:
+    #     print("Division by zero error. Cannot calculate class imbalance.")
+    #     pass
 
     return newtraining_ids, newtraining_matrix, newlabels, newtraining_other
-
 
 
 # def split_data(labels, training_matrix, ids, other, training, validation,original_labels=None):
@@ -280,7 +280,7 @@ def do_the_shuffle(training_matrix, labels, training_other, training_ids, frac_b
 #     validation : float
 #         How much of the data should be in the validation & test set.
 #     original_labels: np.array, optional
-#         Array of the original labels for each data row. Mainly used for merged datasets, 
+#         Array of the original labels for each data row. Mainly used for merged datasets,
 #         otherwise this is the same as labels.
 
 #     Returns
@@ -297,7 +297,7 @@ def do_the_shuffle(training_matrix, labels, training_other, training_ids, frac_b
 #     test_other : np.array
 #     y_val_ori: np.narray
 #     """
-    
+
 #     data_tuples = list(zip(labels, training_matrix, ids, other, original_labels))
 #     np.random.shuffle(data_tuples)
 
@@ -312,7 +312,7 @@ def do_the_shuffle(training_matrix, labels, training_other, training_ids, frac_b
 #      # Shuffle the data
 # #     indices = np.arange(len(labels))
 # #     np.random.shuffle(indices)
-    
+
 # #     labels = labels[indices]
 # #     training_matrix = training_matrix[indices]
 # #     ids = ids[indices]
@@ -358,40 +358,94 @@ def do_the_shuffle(training_matrix, labels, training_other, training_ids, frac_b
 from sklearn.model_selection import train_test_split
 import numpy as np
 
-def split_data(labels, training_matrix, ids, other, training_ratio, validation_ratio, original_labels=None):
+
+def split_data(
+    labels,
+    training_matrix,
+    ids,
+    other,
+    training_ratio,
+    validation_ratio,
+    original_labels=None,
+):
     if original_labels is None:
         original_labels = np.copy(labels)
-    
+
     # Ensure ratios are valid
     if training_ratio + validation_ratio > 1:
-        raise ValueError("training_ratio + validation_ratio must be less than or equal to 1")
+        raise ValueError(
+            "training_ratio + validation_ratio must be less than or equal to 1"
+        )
 
     # First split: training and temp (validation + test)
+
+    ## IF VALIDATION 0 THEN END (ADD THIS IN)
     split_arrays = train_test_split(
-        training_matrix, labels, ids, other, original_labels,
+        training_matrix,
+        labels,
+        ids,
+        other,
+        original_labels,
         train_size=training_ratio,
         stratify=labels,
-        random_state=42
+        random_state=42,
     )
-    
-    x_train, x_temp, y_train, y_temp, ids_train, ids_temp, other_train, other_temp, ori_train, ori_temp = split_arrays
+
+    (
+        x_train,
+        x_temp,
+        y_train,
+        y_temp,
+        ids_train,
+        ids_temp,
+        other_train,
+        other_temp,
+        y_train_ori,
+        ori_temp,
+    ) = split_arrays
 
     # Check if we need a test set
     if np.isclose(training_ratio + validation_ratio, 1):
         # No test set needed, x_temp becomes x_val
-        x_val, y_val, val_ids, val_other, y_val_ori = x_temp, y_temp, ids_temp, other_temp, ori_temp
-        x_test, y_test, test_ids, test_other = np.array([]), np.array([]), np.array([]), np.array([])
+        x_val, y_val, val_ids, val_other, y_val_ori = (
+            x_temp,
+            y_temp,
+            ids_temp,
+            other_temp,
+            ori_temp,
+        )
+        x_test, y_test, test_ids, test_other = (
+            np.array([]),
+            np.array([]),
+            np.array([]),
+            np.array([]),
+        )
     else:
         # Second split: validation and test
         val_ratio = validation_ratio / (1 - training_ratio)
         split_arrays = train_test_split(
-            x_temp, y_temp, ids_temp, other_temp, ori_temp,
+            x_temp,
+            y_temp,
+            ids_temp,
+            other_temp,
+            ori_temp,
             train_size=val_ratio,
             stratify=y_temp,
-            random_state=42
+            random_state=42,
         )
-        
-        x_val, x_test, y_val, y_test, val_ids, test_ids, val_other, test_other, y_val_ori, y_test_ori = split_arrays
+
+        (
+            x_val,
+            x_test,
+            y_val,
+            y_test,
+            val_ids,
+            test_ids,
+            val_other,
+            test_other,
+            y_val_ori,
+            y_test_ori,
+        ) = split_arrays
 
     # Reshape data matrices
     x_train = x_train.reshape(x_train.shape[0], x_train.shape[1], 1)
@@ -399,4 +453,71 @@ def split_data(labels, training_matrix, ids, other, training_ratio, validation_r
     if x_test.size > 0:
         x_test = x_test.reshape(x_test.shape[0], x_test.shape[1], 1)
 
-    return x_train, y_train, x_val, y_val, val_ids, val_other, x_test, y_test, test_ids, test_other, y_val_ori
+    return (
+        x_train,
+        y_train,
+        x_val,
+        y_val,
+        val_ids,
+        val_other,
+        x_test,
+        y_test,
+        test_ids,
+        test_other,
+        y_train_ori,
+        y_val_ori,
+        y_test_ori,
+    )
+
+
+def import_lightcurve(
+    filepath, drop_bad_points=True, return_type="astropy", return_meta_as_dict=False
+):
+    """Importing a lightcurve given a FITS format file.
+
+    Parameters:
+    filepath (str): Path to the FITS file
+    drop_bad_points (bool): Whether to drop bad points or not
+
+    Returns:
+    data (astropy.table.Table): Table containing the lightcurve data
+    meta (astropy.io.fits.header.Header): Header containing the metadata
+
+
+
+    """
+    lc = fits.open(filepath)
+
+    meta = lc[0].header
+    data = lc[1].data
+    if drop_bad_points:
+        try:
+            data = data[data["QUALITY"] == 0]
+        except KeyError:
+            data = data[data["SAP_QUALITY"] == 0]
+
+    return_types = ["astropy", "pandas", "pd"]
+    lc.close()
+
+    data = Table(data)
+
+    if return_type == "pandas" or return_type == "pd":
+        data = Table(data).to_pandas()
+
+    if return_meta_as_dict:
+        meta = dict(meta)
+
+    return data, meta
+
+
+def get_fits_columns(file):
+    lc, _ = import_lightcurve(file)
+    return lc.columns
+
+
+def rms_normalise(flux):
+    """Normalise the lightcurve by it's RMS and then performs a min-max scaling. Assumes flux is already normalised to 1."""
+
+    f = flux - 1
+    f = (f / np.nanstd(flux)) + 1
+    return (f - np.min(f)) / (np.max(f) - np.min(f))
