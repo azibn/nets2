@@ -63,9 +63,9 @@ parser.add_argument(
     "-s",
     "--seed",
     nargs="*",
-    default=[42],
+    default=[49],
     type=int,
-    help="SEED(s) to use for CNN model. Default 42",
+    help="SEED(s) to use for CNN model. Default 4",
     dest="seed",
 )
 parser.add_argument(
@@ -98,7 +98,7 @@ parser.add_argument(
 )
 
 
-parser.add_argument("--merge", nargs="+", help="Paths to additional datasets to merge")
+parser.add_argument("--merge", nargs="+", help="Paths to additional datasets to merge",dest='merge')
 parser.add_argument(
     "--merge_catalogs",
     nargs="+",
@@ -115,9 +115,10 @@ parser.add_argument(
 parser.add_argument(
     "-fp",
     "--flip-portion",
-    help="Flips a portion of the positive class data from left-right. Insert value as fraction. Default is 0.3",
-    default=0.3,
+    help="Flips a portion of the positive class data from left-right. Insert value as fraction. Default is None.",
+    default=None,
     type=float,
+    dest = "flip_portion"
 )
 
 # Mutually exclusive group
@@ -288,7 +289,7 @@ if __name__ == "__main__":
             training=args.training,
             validation=args.validation,
             frac_balance=args.frac_balance,  ### REMOVED ALL NEGATIVE CLASSES OF THE MERGING DATASETS
-            augment_portion=0.3,  # make this a parser argument (default value is OK)
+            augment_portion=args.flip_portion,  # make this a parser argument (default value is OK)
         )
 
     cnn_dir = os.path.join(os.getcwd(), 'cnn-models')

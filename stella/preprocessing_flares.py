@@ -166,8 +166,9 @@ class FlareDataSet(object):
         self.val_labels_ori = misc[11]
         self.test_labels_ori = misc[12]
 
-        self.flip_exocomets(portion=augment_portion)
-        self.print_properly(portion=augment_portion)
+        if (augment_portion is not None): 
+            self.flip_exocomets(portion=augment_portion)
+            self.print_properly(portion=augment_portion)
 
     def load_files(
         self,
@@ -456,6 +457,7 @@ class FlareDataSet(object):
 
         """
         ind_pc = np.where(self.train_labels == 1)[0]
+        print(ind_pc)
         val_pc = np.where(self.val_labels == 1)[0]
 
         if portion is None:

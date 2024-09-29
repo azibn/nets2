@@ -1,8 +1,11 @@
 """
 Creates models of exocomets/exoplanets/eclipsing binaries, and injecting them into real lightcurves. 
+
+Exocomet models were created using custom functions in `models.py`, while exoplanet and binary models were created using the `batman` package.
 """
 
-import os, sys
+import os
+import sys
 import time as ti
 import argparse
 import random
@@ -15,10 +18,10 @@ from astropy.table import Table
 import wotan
 import batman
 import astropy.constants as const
-from scipy.stats import skewnorm
+from astroquery.mast import Catalogs
+import signal
 
-import models
-
+#from scipy.stats import skewnorm
 
 current_dir = os.getcwd()
 while os.path.basename(current_dir) != 'nets2':
@@ -30,7 +33,7 @@ sys.path.insert(1, os.path.join(current_dir, 'scripts'))
 sys.path.insert(1, os.path.join(current_dir, 'stella'))
 
 from utils import *
-
+import models
 
 def calculate_timestep(table):
     """
@@ -92,7 +95,7 @@ def clean_data(table):
                 fluxerror_step = (fei - flux_error[-1]) / steps
 
                 # For small gaps, pretend interpolated data is real.
-                if steps > 3:
+                if steps > 2:
                     set_real = 0
                 else:
                     set_real = 1
@@ -179,7 +182,7 @@ def is_valid_t0(t0, time, large_gaps_indices, diff):
     return True
 
 
-def find_valid_injection_time(lc, window_size, max_attempts=100):
+def find_valid_injection_time(lc, window_size, max_attempts=20):
     for _ in range(max_attempts):
         t0 = np.random.uniform(lc["lc"]["TIME"][0], lc["lc"]["TIME"][-1])
 
@@ -201,10 +204,15 @@ def find_valid_injection_time(lc, window_size, max_attempts=100):
                 return {"t0": t0}
 
 
+def scale_relative_to_baseline(flux):
+    baseline = np.median(flux) 
+    scaled_flux = (flux - baseline) / baseline
+    return (scaled_flux - np.min(scaled_flux)) / (np.max(scaled_flux) - np.min(scaled_flux))
+
 def comet(
     file,
     folder,
-    min_snr=5,
+    min_snr=7,
     max_snr=20,
     window_size=84,
     max_retries=50,
@@ -218,9 +226,10 @@ def comet(
     folder: folder to save the output lightcurve
     min_snr: Minimum SNR (default SNR=5).
     max_snr: Maximum SNR (default SNR=20).
-    window_size: Half of the window size of the lightcurve cutout to use for CNN (default 84, corresponding to a total of 128 cadences (3.5 days).)
+    window_size: Number of cadences representing the window size (default 84, corresponding to 3.5 days)
+    max_retries: Maximum number of retries for model creation (default 50)
+    method: Method to create the comet model ("comet_curve" or "skewed_gaussian")
     save_model: Saves the lightcurve model when exporting the `.npy` file too.
-
     """
     lc = prepare_lightcurve(file)
 
@@ -229,53 +238,37 @@ def comet(
 
     snr = SNR(lc["rms"], min_snr, max_snr)
 
-    injection_time = find_valid_injection_time(lc, window_size)
+    valid_model_found = False
+    retry_count = 0
 
-    retries = 0
-    while retries < max_retries:
+    while not valid_model_found and retry_count < max_retries:
         injection_time = find_valid_injection_time(lc, window_size)
-        if injection_time["t0"] is None:
-            retries += 1
-            continue
-        else:
-            break
-
-
-#     model_functions = {
-#     "comet_curve": lambda lc, snr, t0: 1 - models.comet_curve(lc["time"], snr["amplitude"], t0["t0"]),
-#     "skewed_gaussian": lambda lc, snr, t0: models.skewed_gaussian(
-#         lc["time"],
-#         depth=snr["amplitude"],
-#         alpha=int(np.random.uniform(1, 4)),
-#         sigma=0.74,
-#         t0=t0["t0"],
-#     ),
-# }
-
-
-    if method == "comet_curve" or method is None:
-        shape = np.round(np.random.uniform(1.5,4),3)
-        sigma = np.round(np.random.uniform(0.25,0.7),3)
-        tail = np.round(np.random.uniform(0.35,0.5),3)
-
-        ## t0, A, sigma, tail, shape
-        model = 1 - models.comet_curve2(
-            lc["time"], snr["amplitude"], injection_time["t0"], sigma = sigma, tail = tail, shape = shape)
         
-    elif method == "skewed_gaussian":
-        alpha = int(np.random.uniform(1, 4))
-        model = models.skewed_gaussian(
-            lc["time"],
-            depth=snr["amplitude"],
-            alpha=alpha,
-            sigma=0.74,
-            t0=injection_time["t0"],
-        )  ## sigma can change
+        if injection_time is None:
+            retry_count += 1
+            continue
 
-    f = model * (lc["flux"] / np.nanmedian(lc["flux"]))
+        t0 = injection_time["t0"]
 
-    ### PERFORM SCALING
+        if method == "comet_curve" or method is None:
+            sigma = np.round(np.random.uniform(0.25, 0.7), 3)
+            tail = np.round(np.random.uniform(0.35, 0.5), 3)
+            shape = np.round(np.random.uniform(1.5, 4), 3)
+            model = 1 - models.comet_curve2(lc["time"], snr["amplitude"], t0, sigma=sigma, tail=tail, shape=shape)
+        
+        elif method == "skewed_gaussian":
+            skew = 3
+            duration = 0.2
+            model = models.skewed_gaussian(lc["time"], alpha=skew, t0=t0, sigma=duration, depth=snr["amplitude"])
 
+        f = model * (lc["flux"] / np.nanmedian(lc["flux"]))
+        f = scale_relative_to_baseline(f)
+
+        valid_model_found = True
+
+    if not valid_model_found:
+        print(f"Failed to create a valid model for file {file} after {max_retries} attempts. Skipping...")
+        return None
 
     fluxerror = lc["flux_error"] / lc["flux"]
 
@@ -283,7 +276,7 @@ def comet(
 
     if save_model:
         np.save(
-            f"{folder}/{lc['lc_info']['TIC_ID']}_sector{sector}_model.npy",
+            f"{folder}/{lc['lc_info']['TIC_ID']}_sector{sector}_{args.transit}.npy",
             np.array(
                 [
                     lc["time"][lc["real"] == 1],
@@ -294,10 +287,9 @@ def comet(
                 ]
             ),
         )
-
     else:
         np.save(
-            f"{folder}/{lc['lc_info']['TIC_ID']}_sector{sector}.npy",
+            f"{folder}/{lc['lc_info']['TIC_ID']}_sector{sector}_{args.transit}.npy",
             np.array(
                 [
                     lc["time"][lc["real"] == 1],
@@ -308,107 +300,85 @@ def comet(
             ),
         )
 
-    return lc["lc_info"]["TIC_ID"], injection_time["t0"], snr["snr"], lc["rms"]
+    return lc["lc_info"]["TIC_ID"], t0, snr["snr"], lc["rms"]
 
+def exoplanet(file, folder, m_star, r_star, period_min=3, period_max=700, binary=False):
+    min_snr = 3
+    max_snr = 20
+    window_size = 84
+    max_retries = 10
 
-def exoplanet(
-    file,
-    folder,
-    min_snr=5,
-    max_snr=20,
-    window_size=84,
-    period_min=3,
-    period_max=700,
-    alpha=1.7,
-    m_star=1,
-    r_star=1,
-    max_retries=50,
-    retry_delay=1,
-    timeout_duration=2,
-    binary=False,
-):
+    try:
+        # Read in lightcurve
+        lc = prepare_lightcurve(file)
+        sector = f"{lc['lc_info']['sector']:02d}"
+        snr = SNR(lc["rms"], min_snr, max_snr)
 
-    lc = prepare_lightcurve(file)
+        valid_model_found = False
+        retry_count = 0
 
-    snr = SNR(lc["rms"], min_snr, max_snr)
+        while not valid_model_found and retry_count < max_retries:
+            try:
+                injection_time = find_valid_injection_time(lc, window_size)
+                
+                if injection_time is None:
+                    retry_count += 1
+                    continue
 
-    retries = 0
-    while retries < max_retries:
-        try:
-            params = batman.TransitParams()
-            random_value = np.random.uniform(0, 1)
-            params.per = period_min * (period_max / period_min) ** (
-                random_value ** (1 / alpha)
-            )
+                t0 = injection_time["t0"]
 
-            injection_time = find_valid_injection_time(lc, window_size)
-            if injection_time["t0"] is None:
-                retries += 1
-                continue
+                # Create transit model
+                params = batman.TransitParams()
+                params.t0 = t0
+                random_value = np.random.uniform(0, 1)
 
-            params.t0 = injection_time["t0"]
-            params.rp = np.sqrt(snr["amplitude"])
-            params.a = (
-                (
-                    (
-                        const.G.value
-                        * m_star
-                        * const.M_sun.value
-                        * (params.per * 86400.0) ** 2
-                    )
-                    / (4.0 * (np.pi**2))
-                )
-                ** (1.0 / 3)
-            ) / (r_star * const.R_sun.value)
-            params.inc = 90
-            params.ecc = 0.0
-            params.w = 90.0
-            params.limb_dark = "linear"
-            if binary:
-                params.u = [np.random.uniform(0.1, 0.9)]
-            else:
-                params.u = [np.random.uniform(0.2, 0.8)]
+                if binary:
+                    params.u = [np.random.uniform(0.1, 0.9)]
+                    alpha = 1.7  # a wider spread of periods for binaries
+                else:
+                    params.u = [np.random.uniform(0.2, 0.8)] 
+                    alpha = 1.2  # slightly more biased to shorter periods for exoplanets
 
-            m = batman.TransitModel(params, lc["time"], fac=0.02)
-            batman_flux = m.light_curve(params)
+                params.per = period_min * (period_max / period_min) ** (random_value ** (1 / alpha))
+                params.rp = np.sqrt(snr['amplitude'])
+                params.a = ((params.per * 86400.) ** 2 * const.G.value * m_star * const.M_sun.value / 
+                            (4 * np.pi**2)) ** (1/3) / (r_star * const.R_sun.value)
+                params.inc = 90
+                params.ecc = 0
+                params.w = 90
+                params.limb_dark = "linear"
 
-            if np.min(batman_flux) == 1:
-                retries += 1
-                continue
+                m = batman.TransitModel(params, lc['time'], fac=0.02)
+                model = m.light_curve(params)
 
-            injected_flux = batman_flux * (lc["flux"] / np.nanmedian(lc["flux"]))
-            fluxerror = np.array(lc["flux_error"]) / np.nanmedian(lc["flux"])
+                injected_flux = model * (lc['flux'] / np.nanmedian(lc['flux']))
+                injected_flux = scale_relative_to_baseline(injected_flux)
 
-            sector = f"{lc['lc_info']['sector']:02d}"
-            np.save(
-                f"{folder}/{lc['lc_info']['TIC_ID']}_sector{sector}.npy",
-                np.array(
-                    [
-                        lc["time"][lc["real"] == 1],
-                        injected_flux[lc["real"] == 1],
-                        fluxerror[lc["real"] == 1],
-                        lc["real"][lc["real"] == 1],
-                    ]
-                ),
-            )
+                if np.all(injected_flux >= 0):
+                    valid_model_found = True
+                else:
+                    retry_count += 1
 
-            # return {
-            #     "t0": params.t0,
-            #     "tic_id": lc["lc_info"]["TIC_ID"],
-            #     "time": lc["time"][lc["real"] == 1],
-            #     "injected_flux": injected_flux[lc["real"] == 1],
-            #     "fluxerror": fluxerror[lc["real"] == 1],
-            #     "period": params.per,
-            # }
+            except Exception as e:
+                if "Convergence failure" in str(e):
+                    retry_count += 1
+                else:
+                    raise e
 
-        except Exception as e:
-            retries += 1
-            if retries == max_retries:
-                return None
-            ti.sleep(retry_delay)
+        if not valid_model_found:
+            print(f"Failed to create a valid model after {max_retries} attempts. Skipping...")
+            return None
 
-    return lc["lc_info"]["TIC_ID"], injection_time["t0"], snr["snr"], lc["rms"]
+        fluxerror = np.array(lc["flux_error"]) / np.nanmedian(lc["flux"])
+        tic = lc["lc_info"]["TIC_ID"]
+        np.save(f"{folder}/{tic}_sector{sector}_{args.transit}.npy", 
+                np.array([lc['time'][lc['real'] == 1], injected_flux[lc['real'] == 1], fluxerror[lc['real'] == 1], lc['real'][lc['real'] == 1], model[lc['real'] == 1]]))
 
+        return tic, t0, snr['snr'], lc['rms'] 
+
+    except Exception as e:
+        print(f"Exception occurred: {e}. Continuing...")
+        return None
 
 def main(args):
     # files = # Your list of files or target IDs
@@ -418,14 +388,20 @@ def main(args):
 
     os.makedirs(args.folder, exist_ok=True)
 
-    results = []
+
+    if args.transit != "exocomet":
+        TIC_table = Catalogs.query_object(f'TIC 270577175', catalog="TIC")
+        r_star = TIC_table['rad'][0]
+        m_star = TIC_table['mass'][0]
+        del TIC_table
+
     failed_ids = []
     # Map model names to functions
     model_functions = {
         "exocomet": lambda target_ID: comet(target_ID, folder=args.folder),
-        "exoplanet": lambda target_ID: exoplanet(target_ID, folder=args.folder),
+        "exoplanet": lambda target_ID: exoplanet(target_ID, folder=args.folder,r_star=r_star, m_star=m_star),
         "binary": lambda target_ID: exoplanet(
-            target_ID, folder=args.folder, binary=True
+            target_ID, folder=args.folder, r_star=r_star,m_star=m_star,binary=True
         ),
     }
 
@@ -437,14 +413,16 @@ def main(args):
     for target_ID in tqdm(files[0 : args.number]):
 
         if args.transit in model_functions:
-            #try:
-            tic_id, time, snrs, rms = model_functions[args.transit](target_ID)
-            tic.append(tic_id)
-            times.append(time)
-            snr_cat.append(snrs)
-            rms_cat.append(rms)
-            #except Exception as e:
-            #    failed_ids.append(target_ID)
+            try:
+                tic_id, time, snrs, rms = model_functions[args.transit](target_ID)
+                tic.append(tic_id)
+                times.append(time)
+                snr_cat.append(snrs)
+                rms_cat.append(rms)
+            except Exception as e:
+                print(f"Failed for TIC {target_ID}: ", e)
+                failed_ids.append(target_ID)
+                continue
 
     data = pd.DataFrame(data=[tic, times, snr_cat, rms_cat]).T
     data.columns = ["TIC", "tpeak", "SNR", "RMS"]
@@ -473,13 +451,14 @@ if __name__ == "__main__":
         dest="catalog",
     )
 
-    parser.add_argument("--number", default=5000, dest="number", type=int)
+    parser.add_argument("-n", "--number", default=5000, dest="number", type=int)
 
     parser.add_argument(
         "-t",
         "--transit-type",
-        help='Select the transit type. Options: "exocomet", "exoplanet","binary".',
+        help='Select the transit type. Options: "exocomet", "exoplanet","binary". Default is "exocomet".',
         dest="transit",
+        default='exocomet'
     )
 
     parser.add_argument(

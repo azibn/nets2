@@ -4,6 +4,7 @@
 CODE_OF_CONDUCT.md
 LICENSE
 MANIFEST.in
+README.md
 codecov.yml
 requirements.txt
 setup.cfg
