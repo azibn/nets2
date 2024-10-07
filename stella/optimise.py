@@ -4,9 +4,9 @@ import multiprocessing
 
 def objective(trial, cnn_instance):
     # HYPERPARAMETERS TO TUNE
-    filter1 = trial.suggest_int("filter1", 8, 256)
-    filter2 = trial.suggest_int("filter2", 32, 128)
-    dense = trial.suggest_int("dense", 16, 256)
+    filter1 = trial.suggest_int("filter1", 8, 128)
+    filter2 = trial.suggest_int("filter2", 32, 64)
+    dense = trial.suggest_int("dense", 16, 128)
     dropout = trial.suggest_float("dropout", 0.1, 0.5)
     learning_rate = trial.suggest_float("learning_rate", 0.001,0.01, log=True)
 
@@ -64,7 +64,7 @@ def objective(trial, cnn_instance):
     return history.history["val_accuracy"][-1]
 
 
-def optimise_hyperparameters(cnn_instance, n_trials=200):
+def optimise_hyperparameters(cnn_instance, n_trials=50):
     storage = "sqlite:///optuna_study.db"
 
     # Create the study
