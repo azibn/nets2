@@ -168,7 +168,7 @@ class FlareDataSet(object):
 
         if (augment_portion is not None): 
             self.flip_exocomets(portion=augment_portion)
-            self.print_properly(portion=augment_portion)
+        self.print_properly(portion=augment_portion)
 
     def load_files(
         self,
@@ -457,7 +457,6 @@ class FlareDataSet(object):
 
         """
         ind_pc = np.where(self.train_labels == 1)[0]
-        print(ind_pc)
         val_pc = np.where(self.val_labels == 1)[0]
 
         if portion is None:
@@ -467,16 +466,17 @@ class FlareDataSet(object):
             portion_val = int(len(val_pc) * portion)
 
             flip_ind = np.random.choice(ind_pc, size=portion_tr, replace=False)
-            #flip_ind_val = np.random.choice(val_pc, size=portion_val, replace=False)
+            flip_ind_val = np.random.choice(val_pc, size=portion_val, replace=False)
 
             flipped_data = [self.train_data[i][::-1] for i in flip_ind]
-            #flipped_data_val = [self.val_data[i][::-1] for i in flip_ind_val]
-            # flipped_labels = np.zeros(len(flipped_data))
+            flipped_data_val = [self.val_data[i][::-1] for i in flip_ind_val]
+            flipped_labels = np.zeros(len(flipped_data))
 
             flipped_labels = np.zeros(len(flipped_data))
-            #flipped_labels_val = np.zeros(len(flipped_data_val))
+            flipped_labels_val = np.zeros(len(flipped_data_val))
+            
             flipped_labels_ori = np.full(shape=(len(flipped_data),), fill_value=0)
-            #flipped_labels_ori_val = np.full(shape=(len(flipped_data_val),), fill_value=0)
+            flipped_labels_ori_val = np.full(shape=(len(flipped_data_val),), fill_value=0)
 
             self.train_data = np.concatenate((self.train_data, flipped_data), axis=0)
             self.train_labels = np.concatenate((self.train_labels, flipped_labels), axis=0)
@@ -484,11 +484,19 @@ class FlareDataSet(object):
                 (self.train_labels_ori, flipped_labels_ori), axis=0
             )
 
-            # self.val_data = np.concatenate((self.val_data, flipped_data_val), axis=0)
-            # self.val_labels = np.concatenate((self.val_labels, flipped_labels_val), axis=0)
-            # self.val_labels_ori = np.concatenate(
-            #     (self.val_labels_ori, flipped_labels_ori_val), axis=0
-            # )
+            self.val_data = np.concatenate((self.val_data, flipped_data_val), axis=0)
+            self.val_labels = np.concatenate((self.val_labels, flipped_labels_val), axis=0)
+            self.val_labels_ori = np.concatenate(
+                (self.val_labels_ori, flipped_labels_ori_val), axis=0
+            )
+
+            flipped_train_ids = self.training_ids[flip_ind]
+            self.train_ids = np.concatenate((self.training_ids, flipped_train_ids), axis=0)
+
+            flipped_val_ids = self.val_ids[flip_ind_val]
+            self.val_ids = np.concatenate((self.val_ids, flipped_val_ids), axis=0)
+            self.val_tpeaks = np.concatenate((self.val_tpeaks, self.val_tpeaks[flip_ind_val]), axis=0)
+
 
 
 
@@ -521,9 +529,51 @@ class FlareDataSet(object):
         for value, count in zip(unique_val, counts_val):
             print(f"Class label (validation): {value}, Count: {count}")
 
+    
         print(f"Total size of training set: {len(self.train_data)}")
+
+        
         print(f"Total size of validation set: {len(self.val_data)}")
         print(f"Total size of test set: {len(self.test_data)}")
+
+
+    def print_properly(self, portion=None):
+        ind_pc = np.where(self.train_labels == 1)
+        ind_nc = np.where(self.train_labels != 1)
+        print(f"Number of positive class training data: {len(ind_pc[0])}")
+        print(f"Number of negative class training data: {len(ind_nc[0])}")
+
+        val_pc = np.where(self.val_labels == 1)
+        val_nc = np.where(self.val_labels != 1)
+        print(f"Number of positive class validation data: {len(val_pc[0])}")
+        print(f"Number of negative class validation data: {len(val_nc[0])}")
+
+        ### SORT THIS BIT OUT
+        if portion is not None:
+            print(
+                f"Size of augmented data (training set only): {int(len(ind_pc[0]) * portion)}"
+            )
+        else:
+            print(f"Size of augmented data (training set only): 0")
+
+        # I need to change original labels to original labels, original train labels and original val labels
+        unique_train, counts_train = np.unique(self.train_labels, return_counts=True)
+        unique_val, counts_val = np.unique(self.val_labels_ori, return_counts=True)
+
+        for value, count in zip(unique_train, counts_train):
+            print(f"Class label (training): {value}, Count: {count}")
+
+        for value, count in zip(unique_val, counts_val):
+            print(f"Class label (validation): {value}, Count: {count}")
+
+    
+        print(f"Total size of training set: {len(self.train_data)}")
+        
+        if self.val_data is not None:
+            print(f"Total size of validation set: {len(self.val_data)}")
+        
+        if self.test_data is not None:
+            print(f"Total size of test set: {len(self.test_data)}")
 
         try:
             print(

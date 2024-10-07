@@ -118,6 +118,7 @@ class ConvNN(object):
             self.ds.train_labels = self.ds.train_labels[valid_indices_train]
 
             # Clean validation data
+            ## IndexError issue for flipped exocomets./. Need to fix.
             valid_indices_val = ~np.isnan(self.ds.val_data).any(axis=(1, 2))
             self.ds.val_data = self.ds.val_data[valid_indices_val]
             self.ds.val_labels = self.ds.val_labels[valid_indices_val]
@@ -161,7 +162,7 @@ class ConvNN(object):
             filter1 = 16
             filter2 = 64
             dense = 32
-            dropout = 0.2
+            dropout = 0.1
             l2val = 0.001
             activation = 'relu'
 
@@ -821,7 +822,7 @@ class ConvNN(object):
         return cm, y_pred_multi, y_pred_binary_classes
 
 
-    def evaluate(self, x_val, y_true, y_binary, class_names, seed):
+    def evaluate(self, x_val, y_true, y_binary, class_names, seed,save=False,save_path='../plots/'):
         """
         Evaluate the model and create a 2x5 confusion matrix.
 
@@ -892,8 +893,12 @@ class ConvNN(object):
             family="monospace",
         )
         plt.tight_layout()
-        plt.savefig(f"evaluation-plots-{seed}.png", dpi=200)
-        plt.close()
+
+        #Sort this out later
+        if save:
+            plt.savefig(save_path, dpi=200)
+        else:
+            plt.close()
 
         return cm_2x6, y_pred_binary_classes
 

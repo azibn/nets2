@@ -206,7 +206,7 @@ def plot_metrics(cnn, seed):
 
     plt.tight_layout()
     os.makedirs("plots/", exist_ok=True)
-    plt.savefig(f"plots/metrics-s{seed}-optimised.png", dpi=300)
+    plt.savefig(f"plots/cnn-metrics-s{seed}.png", dpi=300)
     plt.close()
 
 

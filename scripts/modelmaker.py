@@ -20,8 +20,9 @@ import batman
 import astropy.constants as const
 from astroquery.mast import Catalogs
 import signal
+import matplotlib.pyplot as plt
+from scipy.signal import find_peaks, savgol_filter
 
-#from scipy.stats import skewnorm
 
 current_dir = os.getcwd()
 while os.path.basename(current_dir) != 'nets2':
@@ -34,6 +35,7 @@ sys.path.insert(1, os.path.join(current_dir, 'stella'))
 
 from utils import *
 import models
+import stella
 
 def calculate_timestep(table):
     """
@@ -209,6 +211,13 @@ def scale_relative_to_baseline(flux):
     scaled_flux = (flux - baseline) / baseline
     return (scaled_flux - np.min(scaled_flux)) / (np.max(scaled_flux) - np.min(scaled_flux))
 
+def normalise_depth(flux):
+    median = np.median(flux)
+    min_flux = np.min(flux)
+    abs_depth = median - min_flux
+    depth_normalised_lightcurve = ((flux - median) / abs_depth + 1)
+    return depth_normalised_lightcurve
+
 def comet(
     file,
     folder,
@@ -262,7 +271,7 @@ def comet(
             model = models.skewed_gaussian(lc["time"], alpha=skew, t0=t0, sigma=duration, depth=snr["amplitude"])
 
         f = model * (lc["flux"] / np.nanmedian(lc["flux"]))
-        f = scale_relative_to_baseline(f)
+        f = normalise_depth(f)
 
         valid_model_found = True
 
@@ -300,13 +309,13 @@ def comet(
             ),
         )
 
-    return lc["lc_info"]["TIC_ID"], t0, snr["snr"], lc["rms"]
+    return [{"tic": lc['lc_info']['TIC_ID'], "time": t0, "snr": snr, "rms": lc['rms']}]
 
 def exoplanet(file, folder, m_star, r_star, period_min=3, period_max=700, binary=False):
     min_snr = 3
     max_snr = 20
     window_size = 84
-    max_retries = 10
+    max_retries = 50
 
     try:
         # Read in lightcurve
@@ -352,12 +361,16 @@ def exoplanet(file, folder, m_star, r_star, period_min=3, period_max=700, binary
                 model = m.light_curve(params)
 
                 injected_flux = model * (lc['flux'] / np.nanmedian(lc['flux']))
-                injected_flux = scale_relative_to_baseline(injected_flux)
+                injected_flux = normalise_depth(injected_flux)
 
                 if np.all(injected_flux >= 0):
                     valid_model_found = True
                 else:
+                    
+                    plt.show()
+                    break
                     retry_count += 1
+                    
 
             except Exception as e:
                 if "Convergence failure" in str(e):
@@ -374,11 +387,149 @@ def exoplanet(file, folder, m_star, r_star, period_min=3, period_max=700, binary
         np.save(f"{folder}/{tic}_sector{sector}_{args.transit}.npy", 
                 np.array([lc['time'][lc['real'] == 1], injected_flux[lc['real'] == 1], fluxerror[lc['real'] == 1], lc['real'][lc['real'] == 1], model[lc['real'] == 1]]))
 
-        return tic, t0, snr['snr'], lc['rms'] 
+        return [{"tic": tic, "time": t0, "snr": snr, "rms": lc['rms']}]
 
     except Exception as e:
         print(f"Exception occurred: {e}. Continuing...")
         return None
+
+def is_valid_sine_time(t, time, window_size=4):
+    if t < time[0] + window_size or t > time[-1] - window_size:
+        return False
+    
+    window_start = np.searchsorted(time, t - window_size/2)
+    window_end = np.searchsorted(time, t + window_size/2)
+    
+    min_points = 160
+    if window_end - window_start < min_points:
+        return False
+    
+    return True
+
+
+def sines(file, folder, min_period=1.25, max_period=3, 
+                       min_amplitude=0.005, max_amplitude=0.01, 
+                       prominence_factor=0.01, min_distance_days=1):
+    
+    max_attempts = 5
+    
+    lc = prepare_lightcurve(file)
+    time = lc['time']
+    flux = lc['flux'] / np.nanmedian(lc['flux'])
+    num_waves = 1 #np.random.randint(1, 3)
+    
+    # Inject sine waves
+    for _ in range(num_waves):
+        period = np.random.uniform(min_period, max_period)
+        amplitude = np.random.uniform(min_amplitude, max_amplitude)
+        phase = np.random.uniform(0, 2*np.pi)
+        
+        sine_wave = amplitude * np.sin(2 * np.pi * time / period + phase)
+        
+        flux *= (1 + sine_wave)
+    
+    ### Written this way to make it easier to use the other normalisation methods if desired
+    normalised_flux = normalise_depth(flux) 
+    
+    #def find_troughs(time, flux, min_distance_days=1, prominence_factor=0.01):
+    # Invert the flux to turn troughs into peaks
+    inverted_flux = -flux
+
+    # Smooth the inverted flux
+    smoothed_flux = savgol_filter(inverted_flux, window_length=11, polyorder=3)
+
+    # Estimate signal properties
+    amplitude = np.max(smoothed_flux) - np.min(smoothed_flux)
+    timestep = np.median(np.diff(time))
+    distance = int(min_distance_days / timestep)
+
+
+    prominence = max(prominence_factor, amplitude * 0.1)
+
+    # Find peaks (troughs in original signal)
+    troughs, properties = find_peaks(smoothed_flux, 
+                                     prominence=prominence, 
+                                     distance=distance, 
+                                     width=10)
+
+
+    times = time[troughs]
+
+    if len(times) > 5:
+        times = np.random.choice(times, 5, replace=False)
+
+    valid_times = [t for t in times if is_valid_sine_time(t, lc['lc']['TIME'])]
+
+
+    # valid_times = []
+    # invalid_times = []
+    # for t in times:
+    #     if is_valid_t0(t, lc['lc']['TIME'], lc['large_gaps_indices'], lc['diff']):
+    #         valid_times.append(t)
+    #     else:
+    #         invalid_times.append(t)
+
+
+    tic = lc["lc_info"]["TIC_ID"]
+    sector = f"{lc['lc_info']['sector']:02d}"
+
+
+    np.save(f"{folder}/{tic}_sector{sector}_{args.transit}.npy", 
+        np.array([lc['time'], normalised_flux, lc['flux_error'], lc['real']]))
+    
+    return [{"tic": tic, "time": t, "snr": None, "rms": None} for t in valid_times]
+
+
+def process_results(results):
+    tic = []
+    times = []
+    snr_cat = []
+    rms_cat = []
+    for result in results:
+        tic.append(result["tic"])
+        times.append(result["time"])
+        snr_cat.append(result["snr"])
+        rms_cat.append(result["rms"])
+    return tic, times, snr_cat, rms_cat
+
+def load_ds():
+    ds = stella.FlareDataSet(args.folder,args.catalog,frac_balance=1,cadences=168)
+
+    return ds
+
+
+def save_training_set_plots(ds, folder_name):
+    """plots the training set data as the stella input lightcurves (i.e: the chopped up lightcurves)"""
+
+    os.makedirs(folder_name, exist_ok=True)
+
+    ind_pc = np.where(ds.train_labels == 1)[0]
+    ind_nc = np.where(ds.train_labels != 1)[0]
+
+    ### PLOTTING POSITIVE CLASS
+    data = ds.train_data[ind_pc]
+
+
+    num_sets = data.shape[0] // 100
+
+    for set_index in tqdm(range(num_sets),desc='Saving plots'):
+        start_index = set_index * 100
+        end_index = min((set_index + 1) * 100, data.shape[0])
+
+        fig, axs = plt.subplots(10, 10, figsize=(20, 20))
+        axs = axs.flatten()
+
+        for i in range(start_index, end_index):
+            plot_index = i % 100
+            axs[plot_index].plot(data[i, :, 0])
+            axs[plot_index].set_title(f"Plot {i}")
+
+        for j in range(end_index - start_index, len(axs)):
+            axs[j].axis('off')
+
+        plt.tight_layout()
+        plt.savefig(f'{folder_name}/{start_index}-{end_index}.png', dpi=200, bbox_inches='tight')
+        plt.close()
 
 def main(args):
     # files = # Your list of files or target IDs
@@ -403,6 +554,7 @@ def main(args):
         "binary": lambda target_ID: exoplanet(
             target_ID, folder=args.folder, r_star=r_star,m_star=m_star,binary=True
         ),
+        "sines": lambda target_ID: sines(target_ID, folder=args.folder)
     }
 
     tic = []
@@ -411,14 +563,14 @@ def main(args):
     rms_cat = []
 
     for target_ID in tqdm(files[0 : args.number]):
-
         if args.transit in model_functions:
             try:
-                tic_id, time, snrs, rms = model_functions[args.transit](target_ID)
-                tic.append(tic_id)
-                times.append(time)
-                snr_cat.append(snrs)
-                rms_cat.append(rms)
+                results = model_functions[args.transit](target_ID)
+                new_tic, new_times, new_snr, new_rms = process_results(results)
+                tic.extend(new_tic)
+                times.extend(new_times)
+                snr_cat.extend(new_snr)
+                rms_cat.extend(new_rms)
             except Exception as e:
                 print(f"Failed for TIC {target_ID}: ", e)
                 failed_ids.append(target_ID)
@@ -433,6 +585,8 @@ def main(args):
     if len(failed_ids) > 0:
         print(f"Failed IDs: {len(failed_ids)}")
 
+
+    
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -456,7 +610,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "-t",
         "--transit-type",
-        help='Select the transit type. Options: "exocomet", "exoplanet","binary". Default is "exocomet".',
+        help='Select the transit type. Options: "exocomet", "exoplanet","binary","sines". Default is "exocomet".',
         dest="transit",
         default='exocomet'
     )
@@ -468,7 +622,16 @@ if __name__ == "__main__":
         dest="model",
     )
 
+    parser.add_argument(
+        "-pf",
+        "--plot-folders",
+        help="Saves the training set plots in the specified folder.",
+        dest="plotfoldername",
+    )
+
     args = parser.parse_args()
 
     main(args)
+    ds = load_ds()
+    save_training_set_plots(ds,folder_name=args.plotfoldername)
     print("Injections complete.")
