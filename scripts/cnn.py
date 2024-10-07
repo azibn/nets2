@@ -273,8 +273,8 @@ if __name__ == "__main__":
                     additional_dir,
                     additional_catalog,
                     args.c,
-                    args.training,
-                    args.validation,
+                    training=1,
+                    validation=0,
                     frac_balance=1,
                 )
                 datasets.append(additional_dataset)
