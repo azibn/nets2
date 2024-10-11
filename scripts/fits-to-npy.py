@@ -9,22 +9,15 @@ import argparse
 import tqdm
 import pandas as pd
 from astropy.table import Table
-
-current_dir = os.getcwd()
-while os.path.basename(current_dir) != 'nets2':
-    current_dir = os.path.dirname(current_dir)
-    if current_dir == os.path.dirname(current_dir): 
-        raise Exception("'nets2' directory not found in parent directories")
-    
-sys.path.insert(1, os.path.join(current_dir, 'scripts'))
-sys.path.insert(1, os.path.join(current_dir, 'stella'))
+sys.path.insert(1,'scripts')
+sys.path.insert(1, 'stella')
 
 from utils import *
 
 parser = argparse.ArgumentParser(description='Convert FITS files to NPY files.')
-parser.add_argument('--fits_dir', type=str, default=os.path.join(current_dir, 'models/svc-fits'),
+parser.add_argument('--fits_dir', type=str, 
                     help='Directory containing FITS files')
-parser.add_argument('--npy_dir', type=str, default=os.path.join(current_dir, 'models/svc'),
+parser.add_argument('--npy_dir', type=str,
                     help='Directory to save .npy files')
 
 args = parser.parse_args()

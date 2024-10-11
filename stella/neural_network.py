@@ -367,8 +367,8 @@ class ConvNN(object):
                 Column(val_preds, name="pred_s{0:04d}".format(int(seed)))
             )
 
-            class_names = ["Plain", "Exocomet", "Exoplanet", "Binary", "FBinary"]
-            cm, predictions = self.evaluate(
+            class_names = [str(i) for i in range(len(np.unique(self.ds.val_labels_ori)))]
+            cm, predictions, cmplot, report = self.evaluate_2xN(
                 self.ds.val_data,
                 self.ds.val_labels_ori,
                 self.ds.val_labels,
@@ -376,17 +376,25 @@ class ConvNN(object):
                 seed=seed,
             )
 
-            # cm2, predictions2, _ = self.evaluate2(
-            #     self.ds.val_data,
-            #     self.ds.val_labels_ori,
-            #     self.ds.val_labels,
-            #     class_names,
-            #     seed=seed,
-            # )
+            cm2, predictions2, cmplot_NxN, report_NxN = self.evaluate2(
+                self.ds.val_data,
+                self.ds.val_labels_ori,
+                self.ds.val_labels,
+                class_names,
+                seed=seed,
+            )
 
-            # store results
+            # 2xN confusion matrix
             self.confusion_matrix = cm
             self.val_predictions = predictions
+            self.confusion_matrix_2xN_plot = cmplot
+            self.confusion_matrix_report = report
+            
+            # NxN confusion matrix
+            self.confusion_matrix2 = cm2
+            self.val_predictions2 = predictions2
+            self.confusion_matrix_NxN_plot = cmplot_NxN
+            self.confusion_matrix2_report = report_NxN
             # self.val_pred_classes = val_pred_classes
 
             # GETS PREDICTIONS FOR EACH TEST SET LIGHT CURVE IF PRED_TEST IS TRUE
@@ -765,143 +773,81 @@ class ConvNN(object):
         self.predictions = np.array(predictions)
 
     def evaluate2(self, x_val, y_true, y_binary, class_names, seed):
-        print("Shape of x_val:", x_val.shape)
-        print("Shape of y_true:", y_true.shape)
-        print("Shape of y_binary:", y_binary.shape)
 
-        # Ensure y_true and y_binary are 1D
-        y_true = y_true.reshape(-1)
-        y_binary = y_binary.reshape(-1)
-
-        # Get predictions
-        y_pred_binary = self.model.predict(x_val, verbose=0)
-        print("Shape of y_pred_binary:", y_pred_binary.shape)
-
-        y_pred_binary_classes = (y_pred_binary > 0.5).astype(int).reshape(-1)
-        print("Shape of y_pred_binary_classes:", y_pred_binary_classes.shape)
-
-        # Convert binary predictions back to multi-class
-        y_pred_multi = np.zeros_like(y_true)
-        y_pred_multi[y_pred_binary_classes == 1] = 1  # Exocomets
-        y_pred_multi[y_pred_binary_classes == 0] = y_true[
-            y_pred_binary_classes == 0
-        ]  # Keep original labels for non-exocomets
-
-        print("Shape of y_pred_multi:", y_pred_multi.shape)
-
-        # Confusion Matrix
-        cm = confusion_matrix(y_true, y_pred_multi)
-        plt.figure(figsize=(10, 8))
-        sns.heatmap(
-            cm,
-            annot=True,
-            fmt="d",
-            cmap="Blues",
-            xticklabels=class_names,
-            yticklabels=class_names,
-        )
-        plt.xlabel("Predicted")
-        plt.ylabel("True")
-        plt.title("Multi-class Confusion Matrix")
-        plt.savefig(f"cm-multi-s{seed}.png", dpi=200)
-        plt.close()
-
-        # Classification Report
-        print(classification_report(y_true, y_pred_multi, target_names=class_names))
-
-        # Binary classification metrics
-        print("\nBinary Classification Metrics (Exocomets vs Non-Exocomets):")
-        print(
-            classification_report(
-                y_binary,
-                y_pred_binary_classes,
-                target_names=["Non-Exocomet", "Exocomet"],
-            )
-        )
-
-        return cm, y_pred_multi, y_pred_binary_classes
-
-
-    def evaluate(self, x_val, y_true, y_binary, class_names, seed,save=False,save_path='../plots/'):
-        """
-        Evaluate the model and create a 2x5 confusion matrix.
-
-        Parameters:
-        -----------
-        x_val: array-like, the validation data
-        y_true: array-like, the original multi-class labels (0-5)
-        y_binary: array-like, the binary labels used for the CNN (0 or 1)
-        class_names: list, the names of the classes
-        seed: int, random seed for reproducibility
-        """
-        
-        # Predict using the model
+        # Get binary predictions
         y_pred_binary = self.model.predict(x_val)
-        y_pred_binary_classes = (y_pred_binary > 0.6).astype(int).reshape(-1)
+        y_pred_binary_classes = (y_pred_binary > 0.5).astype(int).reshape(-1)
 
-        # Create a 2x5 confusion matrix
-        cm_2x6 = np.zeros((2, 6), dtype=int)
-
-        for true_label, pred_label in zip(y_true, y_pred_binary_classes):
-            if pred_label == 1:  # Predicted as Exocomet
-                cm_2x6[0, true_label] += 1
-            else:  # Predicted as Non-exocomet
-                cm_2x6[1, true_label] += 1
-
-        # Calculate metrics
-        total_exocomets = np.sum(cm_2x6[:, 0])
-        total_non_exocomets = np.sum(cm_2x6[:, 1:])
-
-        # Prepare the results text
-        results_text = "2x5 Confusion Matrix:\n"
-        results_text += f"{cm_2x6}\n\n"
-        results_text += f"Exocomets correctly identified: {cm_2x6[0, 0]}/{total_exocomets} ({cm_2x6[0, 0]/total_exocomets:.2%})\n"
-        results_text += f"Non-exocomets correctly identified: {np.sum(cm_2x6[1, 1:])}/{total_non_exocomets} ({np.sum(cm_2x6[1, 1:])/total_non_exocomets:.2%})\n"
-        results_text += "\nBreakdown of correctly identified non-exocomets:\n"
+        # Get unique classes actually present in the data
+        unique_classes = np.unique(y_true)
         
-        for i, class_name in enumerate(class_names[1:], start=1):
-            correct = cm_2x6[1, i]
-            total = np.sum(cm_2x6[:, i])
-            results_text += f"  {class_name}: {correct}/{total} ({correct/total:.2%})\n"
-
-        # Plotting the confusion matrix
-        plt.figure(figsize=(14, 14))
-
-        # Confusion Matrix Plot
-        plt.subplot(2, 1, 1)
-        sns.heatmap(
-            cm_2x6,
-            annot=True,
-            fmt="d",
-            cmap="Blues",
-            xticklabels=class_names,
-            yticklabels=["Predicted Exocomet", "Predicted Non-exocomet"],
-        )
-        plt.xlabel("Actual")
-        plt.ylabel("Predicted")
-        plt.title("2x5 Confusion Matrix")
-
-        # Text Plot
-        plt.subplot(2, 1, 2)
-        plt.axis("off")
-        plt.text(
-            0,
-            0.5,
-            results_text,
-            fontsize=12,
-            verticalalignment="center",
-            family="monospace",
-        )
-        plt.tight_layout()
-
-        #Sort this out later
-        if save:
-            plt.savefig(save_path, dpi=200)
+        # If we only have two classes, use binary classification names
+        if len(unique_classes) == 2:
+            actual_class_names = ['Non-Exocomet', 'Exocomet']
         else:
-            plt.close()
+            actual_class_names = [i for i in unique_classes]
 
-        return cm_2x6, y_pred_binary_classes
+        # Create confusion matrix
+        cm = confusion_matrix(y_true, y_pred_binary_classes)
 
+        # Create plot
+        fig, ax = plt.subplots(figsize=(10, 8))
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
+                    xticklabels=actual_class_names, yticklabels=actual_class_names, ax=ax)
+        ax.set_xlabel('Predicted')
+        ax.set_ylabel('True')
+        ax.set_title(f'Confusion Matrix (Seed: {seed})')
+        plt.close(fig)
+
+        # Print classification report
+        #print("\nClassification Metrics:")
+        report = classification_report(y_true, y_pred_binary_classes, target_names=actual_class_names,output_dict=True)
+
+        return cm, y_pred_binary_classes, fig, report
+
+
+    def evaluate_2xN(self, x_val, y_true, y_binary, class_names, seed, save=False, save_path='../plots/'):
+        print("Shape of y_true:", y_true.shape)
+        print("Unique values in y_true:", np.unique(y_true))
+        print("Shape of y_binary:", y_binary.shape)
+        print("Unique values in y_binary:", np.unique(y_binary))
+        print("Number of class_names:", len(class_names))
+        print("class_names:", class_names)
+
+        # Get binary predictions
+        y_pred_binary = self.model.predict(x_val)
+        y_pred_binary_classes = (y_pred_binary > 0.5).astype(int).reshape(-1)
+
+        # Get unique classes in y_true
+        unique_classes = np.unique(y_true)
+        print("Unique classes in y_true:", unique_classes)
+
+        # Create 2xN confusion matrix
+        cm_2xN = np.zeros((2, len(class_names)), dtype=int)
+        for true_label, pred_label in zip(y_true, y_pred_binary_classes):
+            cm_2xN[pred_label, true_label] += 1
+
+        # Create plot without displaying it
+        fig, ax = plt.subplots(figsize=(12, 6))
+        sns.heatmap(cm_2xN, annot=True, fmt='d', cmap='Blues', 
+                    xticklabels=class_names,
+                    yticklabels=['Predicted Non-Exocomet', 'Predicted Exocomet'], ax=ax)
+        ax.set_xlabel('Original Class')
+        ax.set_ylabel('Predicted Class')
+        ax.set_title(f'2xN Confusion Matrix (Seed: {seed})')
+
+        plt.tight_layout()
+        plt.close(fig)  # Close the figure to prevent display
+
+        if save:
+            fig.savefig(f'{save_path}/confusion_matrix_2xN_seed{seed}.png', dpi=200, bbox_inches='tight')
+        
+        # Generate classification report as a dictionary
+        class_report = classification_report(y_binary, y_pred_binary_classes, 
+                                            target_names=['Non-Exocomet', 'Exocomet'], 
+                                            output_dict=True)
+
+        return cm_2xN, y_pred_binary_classes, fig, class_report
     # def evaluate(self, x_val, y_true, y_binary, class_names, seed):
     #     """Making confusion matrix. Model predicts on the validation data.
 

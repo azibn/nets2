@@ -3,14 +3,8 @@ import sys
 import math
 import numpy as np
 
-current_dir = os.getcwd()
-while os.path.basename(current_dir) != 'nets2':
-    current_dir = os.path.dirname(current_dir)
-    if current_dir == os.path.dirname(current_dir): 
-        raise Exception("'nets2' directory not found in parent directories")
-    
-sys.path.insert(1, os.path.join(current_dir, 'scripts'))
-sys.path.insert(1, os.path.join(current_dir, 'stella'))
+sys.path.insert(1, 'scripts')
+sys.path.insert(1, 'stella')
 
 from utils import import_lightcurve
 from scipy.optimize import curve_fit

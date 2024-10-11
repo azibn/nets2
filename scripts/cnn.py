@@ -18,15 +18,9 @@ from scipy.stats import loguniform
 from sklearn.model_selection import RandomizedSearchCV
 from tensorflow.keras.regularizers import l2
 from scikeras.wrappers import KerasClassifier
-#sys.path.insert(1, '/home/astro/phrdhx/nets2/stella')
-current_dir = os.getcwd()
-while os.path.basename(current_dir) != 'nets2':
-    current_dir = os.path.dirname(current_dir)
-    if current_dir == os.path.dirname(current_dir): 
-        raise Exception("'nets2' directory not found in parent directories")
-    
-sys.path.insert(1, os.path.join(current_dir, 'scripts'))
-sys.path.insert(1, os.path.join(current_dir, 'stella'))
+   
+sys.path.insert(1, 'scripts')
+sys.path.insert(1, 'stella')
 
 import stella
 import optimise

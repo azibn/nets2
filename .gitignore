@@ -13,10 +13,9 @@ notebooks/*.png
 cnn-models*
 notebooks/grant-test/
 outputs/
-test-lcs
 logs/
 modelplots/
-
+testdata/
 
 
 ## stella stuff that i don't need

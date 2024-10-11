@@ -65,7 +65,7 @@ def objective(trial, cnn_instance):
 
 
 def optimise_hyperparameters(cnn_instance, n_trials=50):
-    storage = "sqlite:///optuna_study.db"
+    storage = None #"sqlite:///optuna_study.db"
 
     # Create the study
     study = optuna.create_study(
