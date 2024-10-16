@@ -117,9 +117,9 @@ parser.add_argument(
 
 parser.add_argument(
     "-dsn",
-    "--ds-name"
+    "--ds-name",
     help="Save the dataset as a pkl file. Default is 'ds.pkl'.",
-    default='ds.pkl'
+    default='ds.pkl',
     dest="dsn",
 )
 
