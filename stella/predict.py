@@ -79,7 +79,7 @@ parser.add_argument(
     "-ds",
     "--dataset",
     help="The dataset used in training, in .pkl form.",
-    default="dsv2.pkl",
+    default="ds.pkl",
     dest="ds",
 )
 
@@ -163,7 +163,7 @@ def process_single_lightcurve(args):
     
     try:
         cnn = stella.ConvNN(
-            output_dir=f"{os.path.join(current_dir)}/cnn-models/", ds=ds
+            output_dir=f"/cnn-models/", ds=ds
         )
 
         preds = np.zeros((len(models), len(time)))

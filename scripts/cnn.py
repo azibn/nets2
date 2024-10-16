@@ -115,6 +115,14 @@ parser.add_argument(
     dest = "flip_portion"
 )
 
+parser.add_argument(
+    "-dsn",
+    "--ds-name"
+    help="Save the dataset as a pkl file. Default is 'ds.pkl'.",
+    default='ds.pkl'
+    dest="dsn",
+)
+
 # Mutually exclusive group
 group = parser.add_mutually_exclusive_group()
 group.add_argument(
@@ -285,6 +293,8 @@ if __name__ == "__main__":
             frac_balance=args.frac_balance,  ### REMOVED ALL NEGATIVE CLASSES OF THE MERGING DATASETS
             augment_portion=args.flip_portion,  # make this a parser argument (default value is OK)
         )
+        
+        dataset.save(f'{args.dsn}')
 
     cnn_dir = os.path.join(os.getcwd(), 'cnn-models')
 

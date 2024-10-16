@@ -14,7 +14,6 @@ setup.py
 .github/workflows/greetings.yml
 .github/workflows/stella-tests.yml
 stella/__init__.py
-stella/cnn.py
 stella/download_nn_set.py
 stella/mark_flares.py
 stella/metrics.py
