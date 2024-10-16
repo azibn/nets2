@@ -253,9 +253,17 @@ def comet(
         t0 = injection_time["t0"]
 
         if method == "comet_curve" or method is None:
-            sigma = np.round(np.random.uniform(0.25, 0.7), 3)
-            tail = np.round(np.random.uniform(0.35, 0.5), 3)
-            shape = np.round(np.random.uniform(1.5, 4), 3)
+            total_duration = np.random.uniform(0.5, 2.0)
+
+            # Allocate the duration between sigma and tail
+            # Let's say we want sigma to be 30-50% of the total duration
+            # sigma_fraction = np.random.uniform(0.3, 0.5)
+            # sigma = np.round(total_duration * sigma_fraction, 3)
+            # tail = np.round(total_duration * (1 - sigma_fraction), 3)
+            
+            sigma = np.round(np.random.uniform(0.25, 1), 3)
+            tail = np.round(np.random.uniform(0.35, 0.8), 3)
+            shape = np.round(np.random.uniform(1, 5), 3)
             model = 1 - models.comet_curve2(lc["time"], snr["amplitude"], t0, sigma=sigma, tail=tail, shape=shape)
         
         elif method == "skewed_gaussian":
@@ -302,7 +310,7 @@ def comet(
             ),
         )
 
-    return [{"tic": lc['lc_info']['TIC_ID'], "time": t0, "snr": snr, "rms": lc['rms']}]
+    return [{"tic": lc['lc_info']['TIC_ID'], "time": t0, "snr": snr['snr'], "rms": lc['rms']}]
 
 def exoplanet(file, folder, m_star, r_star, period_min=3, period_max=700, binary=False):
     min_snr = 3
@@ -422,7 +430,7 @@ def sines(file, folder, min_period=1.25, max_period=3,
         flux *= (1 + sine_wave)
     
     ### Written this way to make it easier to use the other normalisation methods if desired
-    normalised_flux = normalise_depth(flux) 
+    normalised_flux = scale_relative_to_baseline(flux) 
     
     #def find_troughs(time, flux, min_distance_days=1, prominence_factor=0.01):
     # Invert the flux to turn troughs into peaks
@@ -573,6 +581,10 @@ def main(args):
     data.columns = ["TIC", "tpeak", "SNR", "RMS"]
     data.TIC = data.TIC.astype(int)
     t = Table.from_pandas(data)
+    #for col in t.colnames:
+    #    if isinstance(t[col][0], dict):
+    #        t[col] = [json.dumps(item) for item in t[col]]
+    
     t.write(f"{args.catalog}", format="ascii", overwrite=True)
 
     if len(failed_ids) > 0:
@@ -625,6 +637,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     main(args)
-    ds = load_ds()
-    save_training_set_plots(ds,folder_name=args.plotfoldername)
+    if args.plotfoldername:
+        ds = load_ds()
+        save_training_set_plots(ds,folder_name=args.plotfoldername)
     print("Injections complete.")
