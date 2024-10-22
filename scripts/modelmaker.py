@@ -214,7 +214,7 @@ def normalise_depth(flux):
 def comet(
     file,
     folder,
-    min_snr=7,
+    min_snr=5,
     max_snr=20,
     window_size=84,
     max_retries=50,
@@ -253,8 +253,6 @@ def comet(
         t0 = injection_time["t0"]
 
         if method == "comet_curve" or method is None:
-            total_duration = np.random.uniform(0.5, 2.0)
-
             # Allocate the duration between sigma and tail
             # Let's say we want sigma to be 30-50% of the total duration
             # sigma_fraction = np.random.uniform(0.3, 0.5)
@@ -272,7 +270,7 @@ def comet(
             model = models.skewed_gaussian(lc["time"], alpha=skew, t0=t0, sigma=duration, depth=snr["amplitude"])
 
         f = model * (lc["flux"] / np.nanmedian(lc["flux"]))
-        f = normalise_depth(f)
+        f = scale_relative_to_baseline(f)
 
         valid_model_found = True
 
@@ -362,7 +360,7 @@ def exoplanet(file, folder, m_star, r_star, period_min=3, period_max=700, binary
                 model = m.light_curve(params)
 
                 injected_flux = model * (lc['flux'] / np.nanmedian(lc['flux']))
-                injected_flux = normalise_depth(injected_flux)
+                injected_flux = scale_relative_to_baseline(injected_flux)
 
                 if np.all(injected_flux >= 0):
                     valid_model_found = True

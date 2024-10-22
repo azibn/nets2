@@ -173,22 +173,19 @@ class ConvNN(object):
                     kernel_size=kernel1,
                     activation=activation,
                     padding="same",
-                    input_shape=(self.cadences, 1), kernel_regularizer=l2(l2val)
-                )
-            )  #
+                    input_shape=(self.cadences, 1), kernel_regularizer=l2(l2val)))  
             model.add(tf.keras.layers.MaxPooling1D(pool_size=pool))
             model.add(tf.keras.layers.Dropout(dropout))
             model.add(
                 tf.keras.layers.Conv1D(
-                    filters=filter2, kernel_size=kernel2, activation=activation, padding="same", 
-             kernel_regularizer=l2(l2val)))
+                    filters=filter2, kernel_size=kernel2, activation=activation, padding="same", kernel_regularizer=l2(l2val)))
                 
             model.add(tf.keras.layers.MaxPooling1D(pool_size=pool))
             model.add(tf.keras.layers.Dropout(dropout))
 
             # DENSE LAYERS AND SOFTMAX OUTPUT
             model.add(tf.keras.layers.Flatten())
-            model.add(tf.keras.layers.Dense(dense, activation=activation))# #, kernel_regularizer=l2(l2val)))
+            model.add(tf.keras.layers.Dense(dense, activation=activation, kernel_regularizer=l2(l2val)))
             model.add(tf.keras.layers.Dropout(dropout))
             model.add(
                 tf.keras.layers.Dense(1, activation="sigmoid")
@@ -347,7 +344,7 @@ class ConvNN(object):
                 batch_size=batch_size,
                 shuffle=shuffle,
                 validation_data=(self.ds.val_data, self.ds.val_labels),
-                callbacks = [tensorboard_callback ,reduce_lr, self.early_stopping]
+                #callbacks = [tensorboard_callback ,reduce_lr, self.early_stopping]
             )
 
             col_names = list(self.history.history.keys())

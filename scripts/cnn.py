@@ -65,7 +65,7 @@ parser.add_argument(
 parser.add_argument(
     "-e",
     "--epochs",
-    help="Number of epochs for CNN. Default 100.",
+    help="Number of epochs for CNN. Default 200.",
     default=200,
     type=int,
     dest="e",
@@ -118,8 +118,8 @@ parser.add_argument(
 parser.add_argument(
     "-dsn",
     "--ds-name",
-    help="Save the dataset as a pkl file. Default is 'ds.pkl'.",
-    default='ds.pkl',
+    help="Save the dataset as a pkl file.",
+    default=None,
     dest="dsn",
 )
 
@@ -294,7 +294,28 @@ if __name__ == "__main__":
             augment_portion=args.flip_portion,  # make this a parser argument (default value is OK)
         )
         
-        dataset.save(f'{args.dsn}')
+        if args.dsn:
+            ds_info = {
+                'dataset': dataset,
+                'frac_balance': args.frac_balance,
+                'training_fraction': args.training,
+                'validation_fraction': args.validation,
+                'positive_train': len(np.where(dataset.train_labels == 1)[0]),
+                'negative_train': len(np.where(dataset.train_labels != 1)[0]),
+                'positive_val': len(np.where(dataset.val_labels == 1)[0]),
+                'negative_val': len(np.where(dataset.val_labels != 1)[0]),
+                'total_train': len(dataset.train_labels),
+                'total_val': len(dataset.val_labels),
+                'cadences': args.c,
+                'flip_portion': args.flip_portion,
+                'batch_size': args.batch_size,
+                'seeds': args.seed
+            }
+
+            with open(f'{args.dsn}', 'wb') as file:
+                pickle.dump(ds_info, file)
+
+        
 
     cnn_dir = os.path.join(os.getcwd(), 'cnn-models')
 
