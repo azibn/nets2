@@ -803,13 +803,7 @@ class ConvNN(object):
         return cm, y_pred_binary_classes, fig, report
 
 
-    def evaluate_2xN(self, x_val, y_true, y_binary, class_names, seed, save=False, save_path='../plots/'):
-        print("Shape of y_true:", y_true.shape)
-        print("Unique values in y_true:", np.unique(y_true))
-        print("Shape of y_binary:", y_binary.shape)
-        print("Unique values in y_binary:", np.unique(y_binary))
-        print("Number of class_names:", len(class_names))
-        print("class_names:", class_names)
+    def evaluate_2xN(self, x_val, y_true, y_binary, class_names, seed, save=True, save_path='plots/'):
 
         # Get binary predictions
         y_pred_binary = self.model.predict(x_val)
