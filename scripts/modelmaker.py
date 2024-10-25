@@ -22,7 +22,7 @@ from astroquery.mast import Catalogs
 import signal
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks, savgol_filter
-
+#np.random.seed(42)
 sys.path.insert(1, 'scripts')
 sys.path.insert(1, 'stella')
 
@@ -198,6 +198,11 @@ def find_valid_injection_time(lc, window_size, max_attempts=20):
             if np.all(lc["real"][window_start:window_end] == 1):
                 return {"t0": t0}
 
+def check_for_unscaled(flux):
+    """ensures that all flux values are above zero in the comet function, otherwise do it again."""
+
+
+    return np.all(flux > 0)
 
 def scale_relative_to_baseline(flux):
     baseline = np.median(flux) 
@@ -214,10 +219,10 @@ def normalise_depth(flux):
 def comet(
     file,
     folder,
-    min_snr=5,
+    min_snr=7,
     max_snr=20,
     window_size=84,
-    max_retries=50,
+    max_retries=100,
     method=None,
     save_model=True,
 ):
@@ -253,15 +258,10 @@ def comet(
         t0 = injection_time["t0"]
 
         if method == "comet_curve" or method is None:
-            # Allocate the duration between sigma and tail
-            # Let's say we want sigma to be 30-50% of the total duration
-            # sigma_fraction = np.random.uniform(0.3, 0.5)
-            # sigma = np.round(total_duration * sigma_fraction, 3)
-            # tail = np.round(total_duration * (1 - sigma_fraction), 3)
             
-            sigma = np.round(np.random.uniform(0.25, 1), 3)
-            tail = np.round(np.random.uniform(0.35, 0.8), 3)
-            shape = np.round(np.random.uniform(1, 5), 3)
+            sigma = np.round(np.random.uniform(0.25, 1), 3) # 0.25-0.7
+            tail = np.round(np.random.uniform(0.35, 0.8), 3) # 0.35-0.5
+            shape = np.round(np.random.uniform(1, 5), 3) # 1.5-4
             model = 1 - models.comet_curve2(lc["time"], snr["amplitude"], t0, sigma=sigma, tail=tail, shape=shape)
         
         elif method == "skewed_gaussian":
@@ -270,13 +270,17 @@ def comet(
             model = models.skewed_gaussian(lc["time"], alpha=skew, t0=t0, sigma=duration, depth=snr["amplitude"])
 
         f = model * (lc["flux"] / np.nanmedian(lc["flux"]))
-        f = scale_relative_to_baseline(f)
+        f_scaled = scale_relative_to_baseline(f)
 
-        valid_model_found = True
+        if np.all(f_scaled >= 0):
+            valid_model_found = True
+        else:
+            retry_count += 1
+
+        #valid_model_found = True
 
     if not valid_model_found:
-        print(f"Failed to create a valid model for file {file} after {max_retries} attempts. Skipping...")
-        return None
+        return []
 
     fluxerror = lc["flux_error"] / lc["flux"]
 
@@ -288,10 +292,11 @@ def comet(
             np.array(
                 [
                     lc["time"][lc["real"] == 1],
-                    f[lc["real"] == 1],
+                    f_scaled[lc["real"] == 1],
                     fluxerror[lc["real"] == 1],
                     lc["real"][lc["real"] == 1],
                     model[lc["real"] == 1],
+                    f[lc["real"] == 1],
                 ]
             ),
         )
@@ -301,9 +306,10 @@ def comet(
             np.array(
                 [
                     lc["time"][lc["real"] == 1],
-                    f[lc["real"] == 1],
+                    f_scaled[lc["real"] == 1],
                     fluxerror[lc["real"] == 1],
                     lc["real"][lc["real"] == 1],
+                    f[lc["real"] == 1],
                 ]
             ),
         )
@@ -314,7 +320,7 @@ def exoplanet(file, folder, m_star, r_star, period_min=3, period_max=700, binary
     min_snr = 3
     max_snr = 20
     window_size = 84
-    max_retries = 50
+    max_retries = 100
 
     try:
         # Read in lightcurve
@@ -359,16 +365,20 @@ def exoplanet(file, folder, m_star, r_star, period_min=3, period_max=700, binary
                 m = batman.TransitModel(params, lc['time'], fac=0.02)
                 model = m.light_curve(params)
 
-                injected_flux = model * (lc['flux'] / np.nanmedian(lc['flux']))
-                injected_flux = scale_relative_to_baseline(injected_flux)
-
-                if np.all(injected_flux >= 0):
-                    valid_model_found = True
-                else:
-                    
-                    plt.show()
-                    break
+                if not np.all(model > 0):
                     retry_count += 1
+                    continue
+
+                
+                injected_flux = model * (lc['flux'] / np.nanmedian(lc['flux']))
+
+                if not np.all(injected_flux > 0):
+                    retry_count += 1
+                    continue
+                
+                injected_flux_scaled = scale_relative_to_baseline(injected_flux)
+
+                valid_model_found = True
                     
 
             except Exception as e:
@@ -378,15 +388,16 @@ def exoplanet(file, folder, m_star, r_star, period_min=3, period_max=700, binary
                     raise e
 
         if not valid_model_found:
-            print(f"Failed to create a valid model after {max_retries} attempts. Skipping...")
             return None
 
         fluxerror = np.array(lc["flux_error"]) / np.nanmedian(lc["flux"])
         tic = lc["lc_info"]["TIC_ID"]
         np.save(f"{folder}/{tic}_sector{sector}_{args.transit}.npy", 
-                np.array([lc['time'][lc['real'] == 1], injected_flux[lc['real'] == 1], fluxerror[lc['real'] == 1], lc['real'][lc['real'] == 1], model[lc['real'] == 1]]))
+                np.array([lc['time'][lc['real'] == 1], injected_flux_scaled[lc['real'] == 1], fluxerror[lc['real'] == 1], lc['real'][lc['real'] == 1], model[lc['real'] == 1],
+                          injected_flux[lc['real'] == 1]]))
 
-        return [{"tic": tic, "time": t0, "snr": snr, "rms": lc['rms']}]
+        return [{"tic": tic, "time": t0, "snr": snr['snr'], "rms": lc['rms']}]
+    
 
     except Exception as e:
         print(f"Exception occurred: {e}. Continuing...")
@@ -561,19 +572,44 @@ def main(args):
     snr_cat = []
     rms_cat = []
 
-    for target_ID in tqdm(files[0 : args.number]):
-        if args.transit in model_functions:
-            try:
-                results = model_functions[args.transit](target_ID)
-                new_tic, new_times, new_snr, new_rms = process_results(results)
-                tic.extend(new_tic)
-                times.extend(new_times)
-                snr_cat.extend(new_snr)
-                rms_cat.extend(new_rms)
-            except Exception as e:
-                print(f"Failed for TIC {target_ID}: ", e)
-                failed_ids.append(target_ID)
-                continue
+    successful_models = 0
+    file_index = 0
+    
+    with tqdm(total=args.number, desc="Creating models") as pbar:
+        while successful_models < args.number:
+            target_ID = files[file_index]
+            
+            if args.transit in model_functions:
+                try:
+                    results = model_functions[args.transit](target_ID)
+                    if results is not None:
+                        new_tic, new_times, new_snr, new_rms = process_results(results)
+                        tic.extend(new_tic)
+                        times.extend(new_times)
+                        snr_cat.extend(new_snr)
+                        rms_cat.extend(new_rms)
+                        # Update by number of new results
+                        increment = len(new_tic)
+                        successful_models += increment
+                        pbar.update(increment)
+                    else:
+                        failed_ids.append(target_ID)
+                except Exception as e:
+                    print(f"Failed for TIC {target_ID}: ", e)
+                    failed_ids.append(target_ID)
+            
+            if file_index >= len(files):
+                random.shuffle(files)
+                file_index = 0
+            else:
+                file_index += 1
+
+    # Trim to exact number requested in case we went over
+    if len(tic) > args.number:
+        tic = tic[:args.number]
+        times = times[:args.number]
+        snr_cat = snr_cat[:args.number]
+        rms_cat = rms_cat[:args.number]
 
     data = pd.DataFrame(data=[tic, times, snr_cat, rms_cat]).T
     data.columns = ["TIC", "tpeak", "SNR", "RMS"]
@@ -582,11 +618,10 @@ def main(args):
     #for col in t.colnames:
     #    if isinstance(t[col][0], dict):
     #        t[col] = [json.dumps(item) for item in t[col]]
-    
     t.write(f"{args.catalog}", format="ascii", overwrite=True)
 
     if len(failed_ids) > 0:
-        print(f"Failed IDs: {len(failed_ids)}")
+        print(f"{len(failed_ids)} failed combinations along the way. Size of successful models: {len(t)}")
 
 
     
