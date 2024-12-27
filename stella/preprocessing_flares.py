@@ -217,7 +217,7 @@ class FlareDataSet(object):
 
         files = os.listdir(self.fn_dir)
 
-        files = np.sort([i for i in files if i.endswith(".npy") and "sector" in i])
+        files = np.sort([i for i in files if i.endswith(".npy") and any(x in i for x in ["sector", "_q", "_c"])])
 
         tics, time, flux, err, real, model, tpeaks = [], [], [], [], [], [], []
 
@@ -226,9 +226,16 @@ class FlareDataSet(object):
             split_fn = fn.split("_")
             tic = int(split_fn[0])
             tics.append(tic)
-            # sector = int(split_fn[1].split('r')[1][0:2]) # this hard codes things after `r`
-            sector_match = re.search(r"sector[-_]?(\d+)", split_fn[1])
-            sector = int(sector_match.group(1))
+            
+            # Single regex to match all three formats: sector_07, q11, c00
+            sector_match = re.search(r'(?:sector[-_]?|[qc])(\d+)', split_fn[1], re.IGNORECASE)
+            if sector_match:
+                sector = int(sector_match.group(1))
+            else:
+                print(f"Could not extract sector/quarter/campaign number from {fn}")
+                continue
+
+
             time.append(data[0])
             flux.append(data[1])
             err.append(data[2])

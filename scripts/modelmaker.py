@@ -30,6 +30,42 @@ from utils import *
 import models
 import stella
 
+MISSION_CONFIGS = {
+    'TESS': {
+        'time': 'TIME',
+        'flux': 'PCA_FLUX',  # or 'PDCSAP_FLUX'
+        'quality': 'QUALITY',
+        'flux_err': 'FLUX_ERR',
+        #'quality_mask': 0,  # good quality value
+        'time_format': 'bjd',  # or whatever the time format is
+    },
+    'Kepler': {
+        'time': 'TIME',
+        'flux': 'PDCSAP_FLUX',
+        'quality': 'SAP_QUALITY',
+        'flux_err': 'PDCSAP_FLUX_ERR',
+        #'quality_mask': 0,
+        'time_format': 'bkjd',
+    },
+    'K2': {
+        'time': 'TIME',
+        'flux': 'PDCSAP_FLUX',
+        'quality': 'SAP_QUALITY',
+        'flux_err': 'PDCSAP_FLUX_ERR',
+        #'quality_mask': 0,
+        'time_format': 'bkjd',
+    }
+}
+
+model_functions = {
+    "exocomet": lambda target_ID: comet(target_ID, folder=args.folder,mission=args.mission),
+    "exoplanet": lambda target_ID: exoplanet(target_ID, folder=args.folder,r_star=r_star, m_star=m_star),
+    "binary": lambda target_ID: exoplanet(
+        target_ID, folder=args.folder, r_star=r_star,m_star=m_star,binary=True
+    ),
+    "sines": lambda target_ID: sines(target_ID, folder=args.folder)
+}
+
 def calculate_timestep(table):
     """
     Function: Calculates the median value of the time differences between data points in a given table.
@@ -115,21 +151,72 @@ def timeout_handler(signum, frame):
     raise TimeoutError("Timeout reached.")
 
 
-def prepare_lightcurve(file):
+# def prepare_lightcurve(file):
+#     lc, lc_info = import_lightcurve(file, drop_bad_points=True)
+#     lcc = lc.copy()
+#     lcc = lcc[lcc["QUALITY"] == 0]
+#     lcc = lcc["TIME", "PCA_FLUX", "QUALITY", "FLUX_ERR"]
+#     time, flux, quality, real, flux_error = clean_data(lcc)
+
+#     flat_flux = wotan.flatten(
+#         lc["TIME"], lc["PCA_FLUX"], method="median", window_length=1
+#     )
+#     rms = np.nanstd(flat_flux)
+
+#     diff = np.diff(lc["TIME"])
+#     large_gaps_indices = np.where(diff > 1)[0]
+
+#     return {
+#         "lc": lc,
+#         "lc_info": lc_info,
+#         "time": time,
+#         "flux": flux,
+#         "quality": quality,
+#         "real": real,
+#         "flux_error": flux_error,
+#         "flat_flux": flat_flux,
+#         "rms": rms,
+#         "diff": diff,
+#         "large_gaps_indices": large_gaps_indices,
+#     }
+
+def prepare_lightcurve(file, mission='TESS'):
+    """
+    Prepare lightcurve data to process.
+    
+    Parameters:
+    -----------
+    file : str
+        Path to lightcurve file
+    mission : str
+        Mission (options are: 'TESS', 'Kepler', 'K2')
+    """
+    config = MISSION_CONFIGS[mission]
+    
+    # Import lightcurve with mission-specific configuration
     lc, lc_info = import_lightcurve(file, drop_bad_points=True)
     lcc = lc.copy()
-    lcc = lcc[lcc["QUALITY"] == 0]
-    lcc = lcc["TIME", "PCA_FLUX", "QUALITY", "FLUX_ERR"]
+    
+    # Apply quality mask based on mission configuration
+    lcc = lcc[lcc[config['quality']] == 0]
+    
+    # Select relevant columns using mission configuration
+    lcc = lcc[config['time'], config['flux'],config['quality'], config['flux_err']]
+    
     time, flux, quality, real, flux_error = clean_data(lcc)
-
+    
+    # Use appropriate flux column for flattening
     flat_flux = wotan.flatten(
-        lc["TIME"], lc["PCA_FLUX"], method="median", window_length=1
+        lc[config['time']], 
+        lc[config['flux']], 
+        method="median", 
+        window_length=1
     )
+    
     rms = np.nanstd(flat_flux)
-
-    diff = np.diff(lc["TIME"])
+    diff = np.diff(lc[config['time']])
     large_gaps_indices = np.where(diff > 1)[0]
-
+    
     return {
         "lc": lc,
         "lc_info": lc_info,
@@ -225,6 +312,7 @@ def comet(
     max_retries=100,
     method=None,
     save_model=True,
+    mission='TESS'
 ):
     """
     Creates a comet profile and injects it into a lightcurve.
@@ -238,7 +326,7 @@ def comet(
     method: Method to create the comet model ("comet_curve" or "skewed_gaussian")
     save_model: Saves the lightcurve model when exporting the `.npy` file too.
     """
-    lc = prepare_lightcurve(file)
+    lc = prepare_lightcurve(file,mission=mission)
 
     if np.isnan(lc["rms"]):
         return None
@@ -258,7 +346,7 @@ def comet(
         t0 = injection_time["t0"]
 
         if method == "comet_curve" or method is None:
-            
+
             sigma = np.round(np.random.uniform(0.25, 1), 3) # 0.25-0.7
             tail = np.round(np.random.uniform(0.35, 0.8), 3) # 0.35-0.5
             shape = np.round(np.random.uniform(1, 5), 3) # 1.5-4
@@ -284,25 +372,32 @@ def comet(
 
     fluxerror = lc["flux_error"] / lc["flux"]
 
-    sector = f"{lc['lc_info']['sector']:02d}"
+
+    if args.mission == 'TESS':
+        target_id = lc['lc_info']['TIC_ID']
+        segment = f"sector{lc['lc_info']['sector']:02d}"
+    elif args.mission == 'Kepler':
+        target_id = lc['lc_info']['KEPLERID']
+        segment = f"q{lc['lc_info']['quarter']:02d}"
+    elif args.mission == 'K2':
+        target_id = lc['lc_info']['EPIC_ID']
+        segment = f"c{lc['lc_info']['campaign']:02d}"
 
     if save_model:
         np.save(
-            f"{folder}/{lc['lc_info']['TIC_ID']}_sector{sector}_{args.transit}.npy",
-            np.array(
-                [
-                    lc["time"][lc["real"] == 1],
-                    f_scaled[lc["real"] == 1],
-                    fluxerror[lc["real"] == 1],
-                    lc["real"][lc["real"] == 1],
-                    model[lc["real"] == 1],
-                    f[lc["real"] == 1],
-                ]
-            ),
+            f"{folder}/{target_id}_{segment}_{args.transit}.npy",
+            np.array([
+                lc["time"][lc["real"] == 1],
+                f_scaled[lc["real"] == 1],
+                fluxerror[lc["real"] == 1],
+                lc["real"][lc["real"] == 1],
+                model[lc["real"] == 1],
+                f[lc["real"] == 1],
+            ]),
         )
     else:
         np.save(
-            f"{folder}/{lc['lc_info']['TIC_ID']}_sector{sector}_{args.transit}.npy",
+            f"{folder}/{target_id}_{segment}_{args.transit}.npy",
             np.array(
                 [
                     lc["time"][lc["real"] == 1],
@@ -313,8 +408,8 @@ def comet(
                 ]
             ),
         )
-
-    return [{"tic": lc['lc_info']['TIC_ID'], "time": t0, "snr": snr['snr'], "rms": lc['rms']}]
+    ## HAVE ONLY LEFT TIC AS A DICT ENTRY BECAUSE OF OTHER CODE DEPENDENCIES. CAN BE CHANGED LATER.
+    return [{"tic": target_id, "time": t0, "snr": snr['snr'], "rms": lc['rms']}] 
 
 def exoplanet(file, folder, m_star, r_star, period_min=3, period_max=700, binary=False):
     min_snr = 3
@@ -439,7 +534,7 @@ def sines(file, folder, min_period=1.25, max_period=3,
         flux *= (1 + sine_wave)
     
     ### Written this way to make it easier to use the other normalisation methods if desired
-    normalised_flux = scale_relative_to_baseline(flux) 
+    normalised_flux = normalise_depth(flux) 
     
     #def find_troughs(time, flux, min_distance_days=1, prominence_factor=0.01):
     # Invert the flux to turn troughs into peaks
@@ -469,16 +564,6 @@ def sines(file, folder, min_period=1.25, max_period=3,
         times = np.random.choice(times, 5, replace=False)
 
     valid_times = [t for t in times if is_valid_sine_time(t, lc['lc']['TIME'])]
-
-
-    # valid_times = []
-    # invalid_times = []
-    # for t in times:
-    #     if is_valid_t0(t, lc['lc']['TIME'], lc['large_gaps_indices'], lc['diff']):
-    #         valid_times.append(t)
-    #     else:
-    #         invalid_times.append(t)
-
 
     tic = lc["lc_info"]["TIC_ID"]
     sector = f"{lc['lc_info']['sector']:02d}"
@@ -544,7 +629,7 @@ def save_training_set_plots(ds, folder_name):
 def main(args):
     # files = # Your list of files or target IDs
 
-    files = glob(f"{args.dir}/*.fits")
+    files = glob(f"{args.dir}/**/*.fits",recursive=True)
     random.shuffle(files)
 
     os.makedirs(args.folder, exist_ok=True)
@@ -558,14 +643,6 @@ def main(args):
 
     failed_ids = []
     # Map model names to functions
-    model_functions = {
-        "exocomet": lambda target_ID: comet(target_ID, folder=args.folder),
-        "exoplanet": lambda target_ID: exoplanet(target_ID, folder=args.folder,r_star=r_star, m_star=m_star),
-        "binary": lambda target_ID: exoplanet(
-            target_ID, folder=args.folder, r_star=r_star,m_star=m_star,binary=True
-        ),
-        "sines": lambda target_ID: sines(target_ID, folder=args.folder)
-    }
 
     tic = []
     times = []
@@ -574,35 +651,47 @@ def main(args):
 
     successful_models = 0
     file_index = 0
-    
+        
+
     with tqdm(total=args.number, desc="Creating models") as pbar:
+        successful_models = 0
+        file_index = 0
         while successful_models < args.number:
+            if file_index >= len(files):
+                random.shuffle(files)
+                file_index = 0
+            
+            if len(files) == 0:
+                print("Error: The files list is empty.")
+                break
+            
             target_ID = files[file_index]
             
             if args.transit in model_functions:
                 try:
-                    results = model_functions[args.transit](target_ID)
+                    if args.transit == "exocomet":
+                        results = model_functions[args.transit](target_ID)
+                    else:
+                        results = model_functions[args.transit](target_ID, r_star, m_star)
+                    
                     if results is not None:
                         new_tic, new_times, new_snr, new_rms = process_results(results)
-                        tic.extend(new_tic)
-                        times.extend(new_times)
-                        snr_cat.extend(new_snr)
-                        rms_cat.extend(new_rms)
-                        # Update by number of new results
-                        increment = len(new_tic)
-                        successful_models += increment
-                        pbar.update(increment)
-                    else:
-                        failed_ids.append(target_ID)
+                        if new_tic:  # Only extend lists if there are new results
+                            tic.extend(new_tic)
+                            times.extend(new_times)
+                            snr_cat.extend(new_snr)
+                            rms_cat.extend(new_rms)
+                            increment = len(new_tic)
+                            successful_models += increment
+                            pbar.update(increment)
                 except Exception as e:
                     print(f"Failed for TIC {target_ID}: ", e)
                     failed_ids.append(target_ID)
             
-            if file_index >= len(files):
-                random.shuffle(files)
-                file_index = 0
-            else:
-                file_index += 1
+            file_index += 1
+
+    if len(failed_ids) > 0:
+        print(f"Failed IDs: {failed_ids}")
 
     # Trim to exact number requested in case we went over
     if len(tic) > args.number:
@@ -665,6 +754,13 @@ if __name__ == "__main__":
         "--plot-folders",
         help="Saves the training set plots in the specified folder.",
         dest="plotfoldername",
+    )
+
+    parser.add_argument(
+        "--mission",
+        help="Specify mission (TESS, Kepler, K2). Default 'TESS'.",
+        choices=['TESS', 'Kepler', 'K2'],
+        default='TESS'
     )
 
     args = parser.parse_args()
