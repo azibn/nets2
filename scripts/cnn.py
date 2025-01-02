@@ -338,17 +338,23 @@ if __name__ == "__main__":
     if (decision == "y") or (decision == "yes"):
         for seed in args.seed:
             if args.optimise_bayes:
-                print("Selected optimising hyperparameters...")
-                best_params = optimise.optimise_hyperparameters(
-                    cnn, n_trials=100
-                )  # You can adjust n_trials as needed
-                optimise.apply_best_params(cnn, best_params, seed=seed)
-                print("Optimisation complete. Best parameters:", best_params)
-
-                print("CNN initialised.")
-                cnn.train_models(
-                    seeds=seed, epochs=args.e, batch_size=args.batch_size, shuffle=True
-                )
+                if args.optimise_bayes:
+                    print("Optimising hyperparameters with Optuna...")
+                    best_params = optimise.optimise_hyperparameters(cnn, n_trials=100)
+                    
+                    print("Training final model with best parameters...")
+                    final_model, history = optimise.train_final_model(
+                        cnn, 
+                        best_params, 
+                        epochs=args.e, 
+                        seed=seed
+                    )
+                    
+                    cnn.model = final_model
+                    cnn.history = history
+                    
+                    print("CNN complete. Plotting metrics.")
+                    plot_metrics(cnn, seed)
 
             elif args.optimise_RS:
                     print("Using RandomSearchCV to optimise hyperparameters...")

@@ -30,7 +30,7 @@ class ConvNN(object):
         output_dir,
         ds=None,
         layers=None,
-        optimizer="adam",
+        optimizer= "adam",
         loss="binary_crossentropy",
         metrics=None,
     ):
@@ -162,7 +162,7 @@ class ConvNN(object):
             filter1 = 16
             filter2 = 64
             dense = 32
-            dropout = 0.1
+            dropout = 0.3
             l2val = 0.001
             activation = 'relu'
 
@@ -211,6 +211,7 @@ class ConvNN(object):
                     tf.keras.metrics.Precision(),
                     tf.keras.metrics.Recall(),
                 ],
+
             )
         else:
             model.compile(
@@ -428,6 +429,186 @@ class ConvNN(object):
                     fast_writer=False,
                 )
 
+    # def cross_validation(
+    #     self,
+    #     seed=2,
+    #     epochs=350,
+    #     batch_size=64,
+    #     n_splits=5,
+    #     shuffle=False,
+    #     pred_test=False,
+    #     save=False,
+    # ):
+    #     """
+    #     Performs cross validation for a given number of K-folds.
+    #     Reassigns the training and validation sets for each fold.
+
+    #     Parameters
+    #     ----------
+    #     seed : int, optional
+    #          Sets random seed for creating CNN model. Default is 2.
+    #     epochs : int, optional
+    #          Number of epochs to run each folded model on. Default is 350.
+    #     batch_size : int, optional
+    #          The batch size for training. Default is 64.
+    #     n_splits : int, optional
+    #          Number of folds to perform. Default is 5.
+    #     shuffle : bool, optional
+    #          Allows for shuffling in scikitlearn.model_slection.KFold.
+    #          Default is False.
+    #     pred_test : bool, optional
+    #          Allows for predicting on the test set. DO NOT SET TO TRUE UNTIL
+    #          YOU ARE HAPPY WITH YOUR FINAL MODEL. Default is False.
+    #     save : bool, optional
+    #          Allows the user to save the kfolds table of predictions.
+    #          Defaul it False.
+
+    #     Attributes
+    #     ----------
+    #     crossval_predval : astropy.table.Table
+    #          Table of predictions on the validation set from each fold.
+    #     crossval_predtest : astropy.table.Table
+    #          Table of predictions on the test set from each fold. ONLY
+    #          EXISTS IF PRED_TEST IS TRUE.
+    #     crossval_histories : astropy.table.Table
+    #          Table of history values from the model run on each fold.
+    #     """
+
+    #     from sklearn.model_selection import KFold
+    #     from sklearn.metrics import precision_recall_curve
+    #     from sklearn.metrics import average_precision_score
+
+    #     num_flares = len(self.labels)
+    #     ### Why is this taking 90% of the entire dataset?
+    #     trainval_cutoff = int(0.90 * num_flares)
+
+    #     tab = Table()
+    #     predtab = Table()
+
+    #     x_trainval = self.train_data  # Your stratified training set
+    #     y_trainval = self.train_labels  # Your stratified training labels   
+    #     #x_trainval = self.training_matrix[0:trainval_cutoff]
+    #     #y_trainval = self.labels[0:trainval_cutoff]
+    #     p_trainval = self.tpeaks[0:trainval_cutoff]
+    #     t_trainval = self.training_ids[0:trainval_cutoff]
+
+    #     kf = KFold(n_splits=n_splits, shuffle=shuffle)
+
+    #     if pred_test is True:
+    #         pred_test_table = Table()
+
+    #     i = 0
+    #     for ti, vi in kf.split(y_trainval):
+    #         # CREATES TRAINING AND VALIDATION SETS
+    #         x_train = x_trainval[ti]
+    #         y_train = y_trainval[ti]
+    #         x_val = x_trainval[vi]
+    #         y_val = y_trainval[vi]
+
+    #         p_val = p_trainval[vi]
+    #         t_val = t_trainval[vi]
+
+    #         # REFORMAT TO ADD ADDITIONAL CHANNEL TO DATA
+    #         x_train = x_train.reshape(x_train.shape[0], x_train.shape[1], 1)
+    #         x_val = x_val.reshape(x_val.shape[0], x_val.shape[1], 1)
+
+    #         # CREATES MODEL AND RUNS ON REFOLDED TRAINING AND VALIDATION SETS
+    #         self.create_model(seed)
+    #         history = self.model.fit(
+    #             x_train,
+    #             y_train,
+    #             epochs=epochs,
+    #             batch_size=batch_size,
+    #             shuffle=shuffle,
+    #             validation_data=(x_val, y_val),
+    #         )
+
+    #         # SAVES THE MODEL BY DEFAULT
+    #         self.model.save(
+    #             os.path.join(
+    #                 self.output_dir,
+    #                 "crossval_s{0:04d}_i{1:04d}_b{2}_f{3:04d}.h5".format(
+    #                     int(seed), int(epochs), self.frac_balance, i
+    #                 ),
+    #             )
+    #         )
+
+    #         # CALCULATE METRICS FOR VALIDATION SET
+    #         pred_val = self.model.predict(x_val)
+    #         pred_val = np.reshape(pred_val, len(pred_val))
+
+    #         # SAVES PREDS FOR VALIDATION SET
+    #         tab_names = ["id", "gt", "peak", "pred"]
+    #         data = [t_val, y_val, p_val, pred_val]
+    #         for j, tn in enumerate(tab_names):
+    #             col = Column(data[j], name=tn + "_f{0:03d}".format(i))
+    #             predtab.add_column(col)
+
+    #         # PREDICTS ON TEST SET IF PRED_TEST IS TRUE
+    #         if pred_test is True:
+    #             preds = self.model.predict(self.ds.test_data)
+    #             preds = np.reshape(preds, len(preds))
+    #             data = [
+    #                 self.ds.test_ids,
+    #                 self.ds.test_labels,
+    #                 self.ds.test_tpeaks,
+    #                 np.reshape(preds, len(preds)),
+    #             ]
+    #             for j, tn in enumerate(tab_names):
+    #                 col = Column(data[j], name=tn + "_f{0:03d}".format(i))
+    #                 pred_test_table.add_column(col)
+    #             self.crossval_predtest = pred_test_table
+
+    #         precision, recall, _ = precision_recall_curve(y_val, pred_val)
+    #         ap_final = average_precision_score(y_val, pred_val, average=None)
+
+    #         # SAVES HISTORIES TO A TABLE
+    #         col_names = list(history.history.keys())
+    #         for cn in col_names:
+    #             col = Column(history.history[cn], name=cn + "_f{0:03d}".format(i))
+    #             tab.add_column(col)
+
+    #         # KEEPS TRACK OF WHICH FOLD
+    #         i += 1
+
+    #     # SETS TABLES AS ATTRIBUTES
+    #     self.crossval_predval = predtab
+    #     self.crossval_histories = tab
+
+    #     # IF SAVE IS TRUE, SAVES TABLES TO OUTPUT DIRECTORY
+    #     if save is True:
+    #         fmt = "crossval_{0}_s{1:04d}_i{2:04d}_b{3}.txt"
+    #         predtab.write(
+    #             os.path.join(
+    #                 self.output_dir,
+    #                 fmt.format("predval", int(seed), int(epochs), self.frac_balance),
+    #             ),
+    #             format="ascii",
+    #             fast_writer=False,
+    #         )
+    #         tab.write(
+    #             os.path.join(
+    #                 self.output_dir,
+    #                 fmt.format("histories", int(seed), int(epochs), self.frac_balance),
+    #             ),
+    #             format="ascii",
+    #             fast_writer=False,
+    #         )
+
+    #         # SAVES TEST SET PREDICTIONS IF TRUE
+    #         if pred_test is True:
+    #             pred_test_table.write(
+    #                 os.path.join(
+    #                     self.output_dir,
+    #                     fmt.format(
+    #                         "predtest", int(seed), int(epochs), self.frac_balance
+    #                     ),
+    #                 ),
+    #                 format="ascii",
+    #                 fast_writer=False,
+    #             )
+
+    
     def cross_validation(
         self,
         seed=2,
@@ -439,76 +620,76 @@ class ConvNN(object):
         save=False,
     ):
         """
-        Performs cross validation for a given number of K-folds.
-        Reassigns the training and validation sets for each fold.
+        Performs cross validation for a given number of K-folds using combined training 
+        and validation data, with the test set held out for final evaluation.
 
         Parameters
         ----------
         seed : int, optional
-             Sets random seed for creating CNN model. Default is 2.
+            Sets random seed for creating CNN model. Default is 2.
         epochs : int, optional
-             Number of epochs to run each folded model on. Default is 350.
+            Number of epochs to run each folded model on. Default is 350.
         batch_size : int, optional
-             The batch size for training. Default is 64.
+            The batch size for training. Default is 64.
         n_splits : int, optional
-             Number of folds to perform. Default is 5.
+            Number of folds to perform. Default is 5.
         shuffle : bool, optional
-             Allows for shuffling in scikitlearn.model_slection.KFold.
-             Default is False.
+            Allows for shuffling in scikit-learn KFold.
+            Default is False.
         pred_test : bool, optional
-             Allows for predicting on the test set. DO NOT SET TO TRUE UNTIL
-             YOU ARE HAPPY WITH YOUR FINAL MODEL. Default is False.
+            Allows for predicting on the test set. DO NOT SET TO TRUE UNTIL
+            YOU ARE HAPPY WITH YOUR FINAL MODEL. Default is False.
         save : bool, optional
-             Allows the user to save the kfolds table of predictions.
-             Defaul it False.
+            Allows the user to save the kfolds table of predictions.
+            Default is False.
 
-        Attributes
-        ----------
+        Returns
+        -------
         crossval_predval : astropy.table.Table
-             Table of predictions on the validation set from each fold.
-        crossval_predtest : astropy.table.Table
-             Table of predictions on the test set from each fold. ONLY
-             EXISTS IF PRED_TEST IS TRUE.
+            Table of predictions on the validation folds from each fold.
         crossval_histories : astropy.table.Table
-             Table of history values from the model run on each fold.
+            Table of history values from the model run on each fold.
+        crossval_predtest : astropy.table.Table (optional)
+            Table of predictions on the test set from each fold. Only returned
+            if pred_test is True.
         """
-
         from sklearn.model_selection import KFold
         from sklearn.metrics import precision_recall_curve
         from sklearn.metrics import average_precision_score
 
-        num_flares = len(self.labels)
-        trainval_cutoff = int(0.90 * num_flares)
-
+        # Combine training and validation data
+        x_trainval = np.concatenate([self.ds.train_data, self.ds.val_data])
+        y_trainval = np.concatenate([self.ds.train_labels, self.ds.val_labels])
+        ids_trainval = np.concatenate([self.ds.training_ids, self.ds.val_ids])
+        peaks_trainval = np.concatenate([self.ds.training_peaks, self.ds.val_tpeaks])
+        labels_ori_trainval = np.concatenate([self.ds.train_labels_ori, self.ds.val_labels_ori])
+        
         tab = Table()
         predtab = Table()
 
-        x_trainval = self.training_matrix[0:trainval_cutoff]
-        y_trainval = self.labels[0:trainval_cutoff]
-        p_trainval = self.tpeaks[0:trainval_cutoff]
-        t_trainval = self.training_ids[0:trainval_cutoff]
+        if pred_test is True:
+            pred_test_table = Table([
+                self.ds.test_ids,
+                self.ds.test_labels,
+                self.ds.test_tpeaks
+            ], names=["tic", "gt", "tpeak"])
 
         kf = KFold(n_splits=n_splits, shuffle=shuffle)
 
-        if pred_test is True:
-            pred_test_table = Table()
-
         i = 0
         for ti, vi in kf.split(y_trainval):
-            # CREATES TRAINING AND VALIDATION SETS
+            # Creates training and validation sets for this fold
             x_train = x_trainval[ti]
             y_train = y_trainval[ti]
             x_val = x_trainval[vi]
             y_val = y_trainval[vi]
+            
+            # Get corresponding IDs and peaks for validation fold
+            val_ids = ids_trainval[vi]
+            val_peaks = peaks_trainval[vi]
+            val_labels_ori = labels_ori_trainval[vi]
 
-            p_val = p_trainval[vi]
-            t_val = t_trainval[vi]
-
-            # REFORMAT TO ADD ADDITIONAL CHANNEL TO DATA
-            x_train = x_train.reshape(x_train.shape[0], x_train.shape[1], 1)
-            x_val = x_val.reshape(x_val.shape[0], x_val.shape[1], 1)
-
-            # CREATES MODEL AND RUNS ON REFOLDED TRAINING AND VALIDATION SETS
+            # Creates model and runs on refolded training and validation sets
             self.create_model(seed)
             history = self.model.fit(
                 x_train,
@@ -519,90 +700,85 @@ class ConvNN(object):
                 validation_data=(x_val, y_val),
             )
 
-            # SAVES THE MODEL BY DEFAULT
-            self.model.save(
-                os.path.join(
-                    self.output_dir,
-                    "crossval_s{0:04d}_i{1:04d}_b{2}_f{3:04d}.h5".format(
-                        int(seed), int(epochs), self.frac_balance, i
-                    ),
-                )
+            # Save the model
+            model_fmt = "crossval_s{0:04d}_i{1:04d}_b{2}_f{3:04d}.h5".format(
+                int(seed), int(epochs), self.frac_balance, i
             )
+            self.model.save(os.path.join(self.output_dir, model_fmt))
 
-            # CALCULATE METRICS FOR VALIDATION SET
-            pred_val = self.model.predict(x_val)
-            pred_val = np.reshape(pred_val, len(pred_val))
+            # Calculate metrics for validation fold
+            val_preds = self.model.predict(x_val)
+            val_preds = np.reshape(val_preds, len(val_preds))
 
-            # SAVES PREDS FOR VALIDATION SET
-            tab_names = ["id", "gt", "peak", "pred"]
-            data = [t_val, y_val, p_val, pred_val]
-            for j, tn in enumerate(tab_names):
-                col = Column(data[j], name=tn + "_f{0:03d}".format(i))
-                predtab.add_column(col)
+            # Save validation predictions
+            if i == 0:
+                predtab.add_columns([val_ids, y_val, val_peaks, val_labels_ori],
+                                names=["tic", "gt", "tpeak", "labels"])
+            predtab.add_column(Column(val_preds, name=f"pred_f{i:03d}"))
 
-            # PREDICTS ON TEST SET IF PRED_TEST IS TRUE
+            # Calculate and save test predictions if requested
             if pred_test is True:
-                preds = self.model.predict(self.ds.test_data)
-                preds = np.reshape(preds, len(preds))
-                data = [
-                    self.ds.test_ids,
-                    self.ds.test_labels,
-                    self.ds.test_tpeaks,
-                    np.reshape(preds, len(preds)),
-                ]
-                for j, tn in enumerate(tab_names):
-                    col = Column(data[j], name=tn + "_f{0:03d}".format(i))
-                    pred_test_table.add_column(col)
-                self.crossval_predtest = pred_test_table
+                test_preds = self.model.predict(self.ds.test_data)
+                test_preds = np.reshape(test_preds, len(test_preds))
+                pred_test_table.add_column(Column(test_preds, name=f"pred_f{i:03d}"))
 
-            precision, recall, _ = precision_recall_curve(y_val, pred_val)
-            ap_final = average_precision_score(y_val, pred_val, average=None)
-
-            # SAVES HISTORIES TO A TABLE
+            # Save training history
             col_names = list(history.history.keys())
             for cn in col_names:
-                col = Column(history.history[cn], name=cn + "_f{0:03d}".format(i))
+                col = Column(history.history[cn], name=f"{cn}_f{i:03d}")
                 tab.add_column(col)
 
-            # KEEPS TRACK OF WHICH FOLD
+            # Evaluate the model on this fold
+            class_names = [str(i) for i in range(len(np.unique(val_labels_ori)))]
+            cm, predictions, cmplot, report = self.evaluate_2xN(
+                x_val,
+                val_labels_ori,
+                y_val,
+                class_names,
+                seed=seed
+            )
+
+            # Keep track of fold number
             i += 1
 
-        # SETS TABLES AS ATTRIBUTES
-        self.crossval_predval = predtab
-        self.crossval_histories = tab
-
-        # IF SAVE IS TRUE, SAVES TABLES TO OUTPUT DIRECTORY
-        if save is True:
+        # Save tables if requested
+        if save:
             fmt = "crossval_{0}_s{1:04d}_i{2:04d}_b{3}.txt"
             predtab.write(
                 os.path.join(
                     self.output_dir,
-                    fmt.format("predval", int(seed), int(epochs), self.frac_balance),
+                    fmt.format("predval", int(seed), int(epochs), self.frac_balance)
                 ),
                 format="ascii",
-                fast_writer=False,
+                fast_writer=False
             )
+            
             tab.write(
                 os.path.join(
                     self.output_dir,
-                    fmt.format("histories", int(seed), int(epochs), self.frac_balance),
+                    fmt.format("histories", int(seed), int(epochs), self.frac_balance)
                 ),
                 format="ascii",
-                fast_writer=False,
+                fast_writer=False
             )
 
-            # SAVES TEST SET PREDICTIONS IF TRUE
-            if pred_test is True:
+            if pred_test:
                 pred_test_table.write(
                     os.path.join(
                         self.output_dir,
-                        fmt.format(
-                            "predtest", int(seed), int(epochs), self.frac_balance
-                        ),
+                        fmt.format("predtest", int(seed), int(epochs), self.frac_balance)
                     ),
                     format="ascii",
-                    fast_writer=False,
+                    fast_writer=False
                 )
+
+        # Set attributes
+        self.crossval_predval = predtab
+        self.crossval_histories = tab
+        if pred_test:
+            self.crossval_predtest = pred_test_table
+
+        return predtab, tab
 
     def calibration(self, df, metric_threshold):
         """

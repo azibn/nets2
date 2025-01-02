@@ -2,61 +2,70 @@ import tensorflow as tf
 import optuna
 import multiprocessing  
 
+def create_model_with_params(cnn_instance, params):
+    """Create model with specified parameters"""
+    model = tf.keras.models.Sequential([
+        tf.keras.layers.Conv1D(
+            filters=16,
+            kernel_size=7,
+            activation="relu",
+            padding="same",
+            input_shape=(cnn_instance.cadences, 1),
+            kernel_regularizer=tf.keras.regularizers.l2(params['l2_lambda'])
+        ),
+        tf.keras.layers.MaxPooling1D(pool_size=2),
+        tf.keras.layers.Dropout(params['dropout']),
+        tf.keras.layers.Conv1D(
+            filters=64,
+            kernel_size=3,
+            activation="relu",
+            padding="same",
+            kernel_regularizer=tf.keras.regularizers.l2(params['l2_lambda'])
+        ),
+        tf.keras.layers.MaxPooling1D(pool_size=2),
+        tf.keras.layers.Dropout(params['dropout']),
+        tf.keras.layers.Flatten(),
+        tf.keras.layers.Dense(32, activation="relu", 
+                            kernel_regularizer=tf.keras.regularizers.l2(params['l2_lambda'])),
+        tf.keras.layers.Dropout(params['dropout']),
+        tf.keras.layers.Dense(1, activation="sigmoid"),
+    ])
+
+    optimizer = tf.keras.optimizers.legacy.Adam(learning_rate=params['learning_rate'])
+    model.compile(
+        optimizer=optimizer,
+        loss="binary_crossentropy",
+        metrics=[
+            "accuracy",
+            tf.keras.metrics.AUC(),
+            tf.keras.metrics.Precision(),
+            tf.keras.metrics.Recall(),
+            tf.keras.metrics.BinaryAccuracy()
+        ]
+    )
+    return model
+
 def objective(trial, cnn_instance):
-    def objective(trial, cnn_instance):
     # Only tune regularization parameters
     dropout = trial.suggest_float("dropout", 0.1, 0.5)
     l2_lambda = trial.suggest_float("l2_lambda", 1e-6, 1e-2, log=True)
     learning_rate = trial.suggest_float("learning_rate", 1e-4, 1e-2, log=True)
     batch_size = trial.suggest_int("batch_size", 128, 1024, step=256)
 
-    # MODEL
-    model = tf.keras.models.Sequential(
-        [
-            tf.keras.layers.Conv1D(
-                filters=16,
-                kernel_size=7, #kernel_size1
-                activation="relu",
-                padding="same",
-                input_shape=(cnn_instance.cadences, 1),
-                kernel_regularizer=tf.keras.regularizers.l2(l2_lambda)
-            ),
-            tf.keras.layers.MaxPooling1D(pool_size=2),
-            tf.keras.layers.Dropout(dropout),
-            tf.keras.layers.Conv1D(
-                filters=64,
-                kernel_size=3, # kernel_size2
-                activation="relu",
-                padding="same",
-                kernel_regularizer=tf.keras.regularizers.l2(l2_lambda)
-            ),
-            tf.keras.layers.MaxPooling1D(pool_size=2),
-            tf.keras.layers.Dropout(dropout),
-            tf.keras.layers.Flatten(),
-            tf.keras.layers.Dense(32, activation="relu", kernel_regularizer=tf.keras.regularizers.l2(l2_lambda)),
-            tf.keras.layers.Dropout(dropout),
-            tf.keras.layers.Dense(1, activation="sigmoid"),
-        ]
-    )
+    params = {
+        'dropout': dropout,
+        'l2_lambda': l2_lambda,
+        'learning_rate': learning_rate,
+        'batch_size': batch_size
+    }
+    
+    model = create_model_with_params(cnn_instance, params)
 
-    optimizer = tf.keras.optimizers.legacy.Adam(learning_rate=learning_rate)
-    model.compile(
-        optimizer=optimizer,
-        loss="binary_crossentropy",
-        metrics=[
-            "accuracy",
-            tf.keras.metrics.AUC(),  # ROC curve
-            tf.keras.metrics.Precision(),
-            tf.keras.metrics.Recall(),
-            tf.keras.metrics.BinaryAccuracy()
-        ]
-    )
-
-    # TRAIN MODEL
+    # Train model
     history = model.fit(
         cnn_instance.ds.train_data,
         cnn_instance.ds.train_labels,
-        epochs=100, 
+        epochs=100,
         batch_size=batch_size,
         validation_data=(cnn_instance.ds.val_data, cnn_instance.ds.val_labels),
         verbose=0,
@@ -65,16 +74,18 @@ def objective(trial, cnn_instance):
     return history.history["val_auc"][-1]
 
 def optimise_hyperparameters(cnn_instance, n_trials=50):
-    storage = None #"sqlite:///optuna_study.db"
-
-    # Create the study
+    name = 'cnn_optimisation'
+    storage = f"sqlite:///{name}.db"
     study = optuna.create_study(
         direction="maximize",
-        storage=storage,
-        study_name="cnn_optimisation_v3",
+        study_name=f"{name}",
         load_if_exists=True,
     )
-    study.optimize(lambda trial: objective(trial, cnn_instance), n_trials=n_trials,n_jobs=int(multiprocessing.cpu_count()/2))
+    study.optimize(
+        lambda trial: objective(trial, cnn_instance), 
+        n_trials=n_trials,
+        n_jobs=int(multiprocessing.cpu_count()/2)
+    )
 
     print("Best trial:")
     trial = study.best_trial
@@ -85,35 +96,19 @@ def optimise_hyperparameters(cnn_instance, n_trials=50):
 
     return study.best_params
 
-
-def apply_best_params(cnn_instance, best_params, seed):
-    """Updating the CNN with its optimal parameters."""
-    cnn_instance.layers = [
-        tf.keras.layers.Conv1D(
-            filters=best_params["filter1"],
-            kernel_size=best_params["kernel_size1"],
-            activation="leaky_relu",
-            padding="same",
-            input_shape=(cnn_instance.cadences, 1),
-        ),
-        tf.keras.layers.MaxPooling1D(pool_size=best_params["pool_size1"]),
-        tf.keras.layers.Dropout(best_params["dropout"]),
-        tf.keras.layers.Conv1D(
-            filters=best_params["filter2"],
-            kernel_size=best_params["kernel_size2"],
-            activation="leaky_relu",
-            padding="same",
-        ),
-        tf.keras.layers.MaxPooling1D(pool_size=best_params["pool_size2"]),
-        tf.keras.layers.Dropout(best_params["dropout"]),
-        tf.keras.layers.Flatten(),
-        tf.keras.layers.Dense(best_params["dense"], activation="leaky_relu"),
-        tf.keras.layers.Dropout(best_params["dropout"]),
-        tf.keras.layers.Dense(1, activation="sigmoid"),
-    ]
-    cnn_instance.optimizer = tf.keras.optimizers.legacy.Adam(
-        learning_rate=best_params["learning_rate"]
+def train_final_model(cnn_instance, best_params, epochs, seed):
+    """Train the final model using the best parameters"""
+    tf.random.set_seed(seed)
+    
+    model = create_model_with_params(cnn_instance, best_params)
+    
+    history = model.fit(
+        cnn_instance.ds.train_data,
+        cnn_instance.ds.train_labels,
+        epochs=epochs,
+        batch_size=best_params['batch_size'],
+        validation_data=(cnn_instance.ds.val_data, cnn_instance.ds.val_labels),
+        verbose=1
     )
-    cnn_instance.create_model(
-        seed=seed
-    )  
+    
+    return model, history

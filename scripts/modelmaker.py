@@ -59,8 +59,8 @@ MISSION_CONFIGS = {
 
 model_functions = {
     "exocomet": lambda target_ID: comet(target_ID, folder=args.folder,mission=args.mission),
-    "exoplanet": lambda target_ID: exoplanet(target_ID, folder=args.folder,r_star=r_star, m_star=m_star),
-    "binary": lambda target_ID: exoplanet(
+    "exoplanet": lambda target_ID, r_star, m_star: exoplanet(target_ID, folder=args.folder,r_star=r_star, m_star=m_star,mission=args.mission),
+    "binary": lambda target_ID, r_star, m_star: exoplanet(
         target_ID, folder=args.folder, r_star=r_star,m_star=m_star,binary=True
     ),
     "sines": lambda target_ID: sines(target_ID, folder=args.folder)
@@ -435,7 +435,7 @@ def comet(
     ## HAVE ONLY LEFT TIC AS A DICT ENTRY BECAUSE OF OTHER CODE DEPENDENCIES. CAN BE CHANGED LATER.
     return [{"tic": target_id, "time": t0, "snr": snr['snr'], "rms": lc['rms']}] 
 
-def exoplanet(file, folder, m_star, r_star, period_min=3, period_max=700, binary=False):
+def exoplanet(file, folder, m_star, r_star, period_min=3, period_max=700, binary=False,mission='TESS'):
     min_snr = 3
     max_snr = 20
     window_size = 84
@@ -512,8 +512,8 @@ def exoplanet(file, folder, m_star, r_star, period_min=3, period_max=700, binary
         fluxerror = np.array(lc["flux_error"]) / np.nanmedian(lc["flux"])
         tic = lc["lc_info"]["TIC_ID"]
         np.save(f"{folder}/{tic}_sector{sector}_{args.transit}.npy", 
-                np.array([lc['time'][lc['real'] == 1], injected_flux_scaled[lc['real'] == 1], fluxerror[lc['real'] == 1], lc['real'][lc['real'] == 1], model[lc['real'] == 1],
-                          injected_flux[lc['real'] == 1]]))
+                np.array([lc['time'], injected_flux_scaled, fluxerror, lc['real'], model,
+                          injected_flux]))
 
         return [{"tic": tic, "time": t0, "snr": snr['snr'], "rms": lc['rms']}]
     
@@ -536,7 +536,7 @@ def is_valid_sine_time(t, time, window_size=4):
     return True
 
 
-def sines(file, folder, min_period=1.25, max_period=3, 
+def sines(file, folder, min_period=1, max_period=3, 
                        min_amplitude=0.005, max_amplitude=0.01, 
                        prominence_factor=0.01, min_distance_days=1):
     
@@ -693,7 +693,7 @@ def main(args):
             
             if args.transit in model_functions:
                 try:
-                    if args.transit == "exocomet":
+                    if args.transit == "exocomet" or args.transit == 'sines':
                         results = model_functions[args.transit](target_ID)
                     else:
                         results = model_functions[args.transit](target_ID, r_star, m_star)
