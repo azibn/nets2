@@ -112,32 +112,36 @@ def clean_data(table):
     real = []
     flux_error = []
     timestep = calculate_timestep(table)
-
-    ### this scale factor ensures that you can use any cadence of lightcurves. 48 cadences = 1 day.
     factor = (1 / 48) / timestep
+    
+    gap_threshold = 0.5
 
     for row in table:
         ti, fi, qi, fei = row
 
         if len(time) > 0:
-            steps = int(round((ti - time[-1]) / timestep * factor))  # (y2-y1)/(x2-x1)
-            if steps > 1:
-                fluxstep = (fi - flux[-1]) / steps
-                fluxerror_step = (fei - flux_error[-1]) / steps
+            current_diff = ti - time[-1]
+            steps = int(round((ti - time[-1]) / timestep * factor))
 
-                # For small gaps, pretend interpolated data is real.
-                if steps > 2:
-                    set_real = 0
-                else:
-                    set_real = 1
+            # Only interpolate if gap is smaller than 1 day
+            if current_diff <= gap_threshold:
+                if steps > 1:
+                    fluxstep = (fi - flux[-1]) / steps
+                    fluxerror_step = (fei - flux_error[-1]) / steps
 
-                for _ in range(steps - 1):
-                    time.append(timestep + time[-1])
-                    flux.append(fluxstep + flux[-1])
-                    flux_error.append(fluxerror_step + flux_error[-1])
+                    # For small gaps, pretend interpolated data is real
+                    if steps > 2:
+                        set_real = 0
+                    else:
+                        set_real = 1
 
-                    quality.append(0)
-                    real.append(set_real)
+                    for _ in range(steps - 1):
+                        time.append(timestep + time[-1])
+                        flux.append(fluxstep + flux[-1])
+                        flux_error.append(fluxerror_step + flux_error[-1])
+                        quality.append(0)
+                        real.append(set_real)
+
         time.append(ti)
         flux.append(fi)
         quality.append(qi)
@@ -193,11 +197,9 @@ def prepare_lightcurve(file, mission='TESS'):
     """
     config = MISSION_CONFIGS[mission]
     
-    # Import lightcurve with mission-specific configuration
     lc, lc_info = import_lightcurve(file, drop_bad_points=True)
     lcc = lc.copy()
     
-    # Apply quality mask based on mission configuration
     lcc = lcc[lcc[config['quality']] == 0]
     
     # Select relevant columns using mission configuration
@@ -210,8 +212,7 @@ def prepare_lightcurve(file, mission='TESS'):
         lc[config['time']], 
         lc[config['flux']], 
         method="median", 
-        window_length=1
-    )
+        window_length=1)
     
     rms = np.nanstd(flat_flux)
     diff = np.diff(lc[config['time']])
@@ -228,7 +229,7 @@ def prepare_lightcurve(file, mission='TESS'):
         "flat_flux": flat_flux,
         "rms": rms,
         "diff": diff,
-        "large_gaps_indices": large_gaps_indices,
+        "large_gaps_indices": large_gaps_indices
     }
 
 
@@ -249,7 +250,7 @@ def is_valid_t0(t0, time, large_gaps_indices, diff):
 
     """
     for index in large_gaps_indices:
-        if time[index] - 1 <= t0 <= time[index + 1] + 1:
+        if time[index] - 2 <= t0 <= time[index + 1] + 1.5:
             return False
         if (
             index < len(time) - 1
@@ -257,9 +258,9 @@ def is_valid_t0(t0, time, large_gaps_indices, diff):
             and abs(t0 - time[index + 1]) < 1.5
         ):
             return False
-        if index > 0 and diff[index - 1] > 0.5 and abs(t0 - time[index]) < 1.5:
+        if index > 0 and diff[index - 1] > 0.5 and abs(t0 - time[index]) < 4:
             return False
-    if t0 <= time[0] + 1.5 or t0 >= time[-1] - 1.5:
+    if t0 <= time[0] + 1.5 or t0 >= time[-1] - 2:
         return False
     return True
 
@@ -288,7 +289,6 @@ def find_valid_injection_time(lc, window_size, max_attempts=20):
 def check_for_unscaled(flux):
     """ensures that all flux values are above zero in the comet function, otherwise do it again."""
 
-
     return np.all(flux > 0)
 
 def scale_relative_to_baseline(flux):
@@ -307,7 +307,7 @@ def comet(
     file,
     folder,
     min_snr=7,
-    max_snr=20,
+    max_snr=12,
     window_size=84,
     max_retries=100,
     method=None,
@@ -331,7 +331,9 @@ def comet(
     if np.isnan(lc["rms"]):
         return None
 
+
     snr = SNR(lc["rms"], min_snr, max_snr)
+
 
     valid_model_found = False
     retry_count = 0
@@ -345,11 +347,13 @@ def comet(
 
         t0 = injection_time["t0"]
 
+
+
         if method == "comet_curve" or method is None:
 
-            sigma = np.round(np.random.uniform(0.25, 1), 3) # 0.25-0.7
-            tail = np.round(np.random.uniform(0.35, 0.8), 3) # 0.35-0.5
-            shape = np.round(np.random.uniform(1, 5), 3) # 1.5-4
+            sigma = np.round(np.random.uniform(0.25, 0.75), 3) # 0.25-0.7
+            tail = np.round(np.random.uniform(0.35, 0.7), 3) # 0.35-0.5
+            shape = np.round(np.random.uniform(1, 3.5), 3) # 1.5-4
             model = 1 - models.comet_curve2(lc["time"], snr["amplitude"], t0, sigma=sigma, tail=tail, shape=shape)
         
         elif method == "skewed_gaussian":
@@ -359,7 +363,7 @@ def comet(
 
         f = model * (lc["flux"] / np.nanmedian(lc["flux"]))
         f_scaled = scale_relative_to_baseline(f)
-
+    
         if np.all(f_scaled >= 0):
             valid_model_found = True
         else:
@@ -383,31 +387,51 @@ def comet(
         target_id = lc['lc_info']['EPIC_ID']
         segment = f"c{lc['lc_info']['campaign']:02d}"
 
+    # if save_model:
+    #     np.save(
+    #         f"{folder}/{target_id}_{segment}_{args.transit}.npy",
+    #         np.array([
+    #             lc["time"][lc["real"] == 1],
+    #             f_scaled[lc["real"] == 1],
+    #             fluxerror[lc["real"] == 1],
+    #             lc["real"][lc["real"] == 1],
+    #             model[lc["real"] == 1],
+    #             f[lc["real"] == 1],
+    #         ]),
+    #     )
+    # else:
+    #     np.save(
+    #         f"{folder}/{target_id}_{segment}_{args.transit}.npy",
+    #         np.array(
+    #             [
+    #                 lc["time"][lc["real"] == 1],
+    #                 f_scaled[lc["real"] == 1],
+    #                 fluxerror[lc["real"] == 1],
+    #                 lc["real"][lc["real"] == 1],
+    #                 f[lc["real"] == 1],
+    #             ]
+    #         ),
+    #     )
+
     if save_model:
-        np.save(
-            f"{folder}/{target_id}_{segment}_{args.transit}.npy",
-            np.array([
-                lc["time"][lc["real"] == 1],
-                f_scaled[lc["real"] == 1],
-                fluxerror[lc["real"] == 1],
-                lc["real"][lc["real"] == 1],
-                model[lc["real"] == 1],
-                f[lc["real"] == 1],
-            ]),
-        )
+        np.save(f"{folder}/{target_id}_{segment}_{args.transit}.npy",
+        np.array([
+            lc["time"],
+            f_scaled,
+            fluxerror,
+            lc["real"],
+            model,
+            f,
+        ])),
     else:
-        np.save(
-            f"{folder}/{target_id}_{segment}_{args.transit}.npy",
-            np.array(
-                [
-                    lc["time"][lc["real"] == 1],
-                    f_scaled[lc["real"] == 1],
-                    fluxerror[lc["real"] == 1],
-                    lc["real"][lc["real"] == 1],
-                    f[lc["real"] == 1],
-                ]
-            ),
-        )
+        np.save(f"{folder}/{target_id}_{segment}_{args.transit}.npy",
+        np.array([
+            lc["time"],
+            f_scaled,
+            fluxerror,
+            lc["real"],
+            f,
+        ])),
     ## HAVE ONLY LEFT TIC AS A DICT ENTRY BECAUSE OF OTHER CODE DEPENDENCIES. CAN BE CHANGED LATER.
     return [{"tic": target_id, "time": t0, "snr": snr['snr'], "rms": lc['rms']}] 
 
@@ -603,7 +627,7 @@ def save_training_set_plots(ds, folder_name):
 
     ### PLOTTING POSITIVE CLASS
     data = ds.train_data[ind_pc]
-
+    tic_ids = ds.training_ids[ind_pc]
 
     num_sets = data.shape[0] // 100
 
@@ -617,7 +641,7 @@ def save_training_set_plots(ds, folder_name):
         for i in range(start_index, end_index):
             plot_index = i % 100
             axs[plot_index].plot(data[i, :, 0])
-            axs[plot_index].set_title(f"Plot {i}")
+            axs[plot_index].set_title(f"Plot {int(tic_ids[i])}")
 
         for j in range(end_index - start_index, len(axs)):
             axs[j].axis('off')

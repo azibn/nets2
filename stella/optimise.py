@@ -3,42 +3,37 @@ import optuna
 import multiprocessing  
 
 def objective(trial, cnn_instance):
-    # HYPERPARAMETERS TO TUNE
-    filter1 = trial.suggest_int("filter1", 8, 128)
-    filter2 = trial.suggest_int("filter2", 32, 64)
-    dense = trial.suggest_int("dense", 16, 128)
+    def objective(trial, cnn_instance):
+    # Only tune regularization parameters
     dropout = trial.suggest_float("dropout", 0.1, 0.5)
-    learning_rate = trial.suggest_float("learning_rate", 0.001,0.01, log=True)
-
-    kernel_size1 = trial.suggest_int("kernel_size1", 3, 17, step=2)
-    kernel_size2 = trial.suggest_int(
-        "kernel_size2", 3, kernel_size1, step=2
-    )  # MUST BE SMALLER THAN KERNEL_SIZE1
-    pool_size1 = trial.suggest_int("pool_size1", 2, 4)
-    pool_size2 = trial.suggest_int("pool_size2", 2, 4)
+    l2_lambda = trial.suggest_float("l2_lambda", 1e-6, 1e-2, log=True)
+    learning_rate = trial.suggest_float("learning_rate", 1e-4, 1e-2, log=True)
+    batch_size = trial.suggest_int("batch_size", 128, 1024, step=256)
 
     # MODEL
     model = tf.keras.models.Sequential(
         [
             tf.keras.layers.Conv1D(
-                filters=filter1,
+                filters=16,
                 kernel_size=7, #kernel_size1
-                activation="leaky_relu",
+                activation="relu",
                 padding="same",
                 input_shape=(cnn_instance.cadences, 1),
+                kernel_regularizer=tf.keras.regularizers.l2(l2_lambda)
             ),
-            tf.keras.layers.MaxPooling1D(pool_size=pool_size1),
+            tf.keras.layers.MaxPooling1D(pool_size=2),
             tf.keras.layers.Dropout(dropout),
             tf.keras.layers.Conv1D(
-                filters=filter2,
+                filters=64,
                 kernel_size=3, # kernel_size2
-                activation="leaky_relu",
+                activation="relu",
                 padding="same",
+                kernel_regularizer=tf.keras.regularizers.l2(l2_lambda)
             ),
-            tf.keras.layers.MaxPooling1D(pool_size=pool_size2),
+            tf.keras.layers.MaxPooling1D(pool_size=2),
             tf.keras.layers.Dropout(dropout),
             tf.keras.layers.Flatten(),
-            tf.keras.layers.Dense(dense, activation="leaky_relu"),
+            tf.keras.layers.Dense(32, activation="relu", kernel_regularizer=tf.keras.regularizers.l2(l2_lambda)),
             tf.keras.layers.Dropout(dropout),
             tf.keras.layers.Dense(1, activation="sigmoid"),
         ]
@@ -48,21 +43,26 @@ def objective(trial, cnn_instance):
     model.compile(
         optimizer=optimizer,
         loss="binary_crossentropy",
-        metrics=["accuracy", tf.keras.metrics.Precision(), tf.keras.metrics.Recall()],
+        metrics=[
+            "accuracy",
+            tf.keras.metrics.AUC(),  # ROC curve
+            tf.keras.metrics.Precision(),
+            tf.keras.metrics.Recall(),
+            tf.keras.metrics.BinaryAccuracy()
+        ]
     )
 
     # TRAIN MODEL
     history = model.fit(
         cnn_instance.ds.train_data,
         cnn_instance.ds.train_labels,
-        epochs=20,  # Use fewer epochs for faster optimization
-        batch_size=64,
+        epochs=100, 
+        batch_size=batch_size,
         validation_data=(cnn_instance.ds.val_data, cnn_instance.ds.val_labels),
         verbose=0,
     )
 
-    return history.history["val_accuracy"][-1]
-
+    return history.history["val_auc"][-1]
 
 def optimise_hyperparameters(cnn_instance, n_trials=50):
     storage = None #"sqlite:///optuna_study.db"

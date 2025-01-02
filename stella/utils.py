@@ -217,7 +217,7 @@ def do_the_shuffle(training_matrix, labels, training_other, training_ids, frac_b
     Returns
     -------
     """
-    np.random.seed(321)
+    np.random.seed(44)
     ind_shuffle = np.random.permutation(training_matrix.shape[0])
 
     labels2 = np.copy(labels[ind_shuffle])
