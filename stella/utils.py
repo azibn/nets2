@@ -217,7 +217,7 @@ def do_the_shuffle(training_matrix, labels, training_other, training_ids, frac_b
     Returns
     -------
     """
-    np.random.seed(44)
+    np.random.seed(321)
     ind_shuffle = np.random.permutation(training_matrix.shape[0])
 
     labels2 = np.copy(labels[ind_shuffle])
@@ -559,6 +559,8 @@ def split_data(
             y_val_ori,
             y_test_ori,
         ) = split_arrays
+
+
 
     # Reshape data matrices
     x_train = x_train.reshape(x_train.shape[0], x_train.shape[1], 1)

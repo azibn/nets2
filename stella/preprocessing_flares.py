@@ -72,7 +72,7 @@ class FlareDataSet(object):
              The size of each training set. Default is 200.
         frac_balance : float, optional
              The amount of the negative class to remove.
-             Default is 0.75.
+             Default is 0.75. If merged datasets are used, this only removes a fraction from the original dataset, not the merged dataset.
         training : float, optional
              Assigns the percentage of training set data for the
              model. Default is 80%
@@ -134,6 +134,14 @@ class FlareDataSet(object):
             self.original_labels,
         )
 
+        if merge_datasets == True:
+            self.verify_stratification(
+            misc[1],  # y_train
+            misc[3],  # y_val
+            misc[10], # y_train_ori
+            misc[11])  # y_val_ori
+
+
         if self.num_subset:
             subset_data = self.subsets(num_subset=self.num_subset)
             for attr, value in subset_data.items():
@@ -147,6 +155,8 @@ class FlareDataSet(object):
                 validation,
                 self.original_labels,
             )
+
+
 
         self.train_data = misc[0]
         self.train_labels = misc[1]
@@ -593,3 +603,44 @@ class FlareDataSet(object):
         """Save the FlareDataSet instance to a file."""
         with open(output, 'wb') as f:
             pickle.dump(self, f)
+
+    def verify_stratification(self, y_train, y_val, y_train_ori, y_val_ori):
+        """
+        Verifies stratification of both binary and original labels in train/val splits.
+        
+        Parameters:
+        -----------
+        y_train: array-like
+            Binary labels for training set
+        y_val: array-like
+            Binary labels for validation set
+        y_train_ori: array-like
+            Original labels for training set
+        y_val_ori: array-like
+            Original labels for validation set
+        """
+        # Calculate proportions for binary labels
+        train_total = len(y_train)
+        val_total = len(y_val)
+        
+        print("Binary Label Distribution:")
+        print("-" * 30)
+        for label in np.unique(np.concatenate([y_train, y_val])):
+            train_prop = np.sum(y_train == label) / train_total
+            val_prop = np.sum(y_val == label) / val_total
+            print(f"Label {label}:")
+            print(f"  Training: {train_prop:.3f} ({np.sum(y_train == label)} samples)")
+            print(f"  Validation: {val_prop:.3f} ({np.sum(y_val == label)} samples)")
+            print(f"  Difference: {abs(train_prop - val_prop):.3f}")
+            print()
+        
+        print("Original Label Distribution:")
+        print("-" * 30)
+        for label in np.unique(np.concatenate([y_train_ori, y_val_ori])):
+            train_prop = np.sum(y_train_ori == label) / train_total
+            val_prop = np.sum(y_val_ori == label) / val_total
+            print(f"Label {label}:")
+            print(f"  Training: {train_prop:.3f} ({np.sum(y_train_ori == label)} samples)")
+            print(f"  Validation: {val_prop:.3f} ({np.sum(y_val_ori == label)} samples)")
+            print(f"  Difference: {abs(train_prop - val_prop):.3f}")
+            print()

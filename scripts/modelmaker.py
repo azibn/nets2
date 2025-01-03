@@ -426,10 +426,10 @@ def comet(
     else:
         np.save(f"{folder}/{target_id}_{segment}_{args.transit}.npy",
         np.array([
-            lc["time"],
+            lc,
             f_scaled,
             fluxerror,
-            lc["real"],
+            lc,
             f,
         ])),
     ## HAVE ONLY LEFT TIC AS A DICT ENTRY BECAUSE OF OTHER CODE DEPENDENCIES. CAN BE CHANGED LATER.
