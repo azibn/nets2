@@ -208,9 +208,11 @@ class ConvNN(object):
                 loss=self.loss,
                 metrics=[
                     "accuracy",
+                    tf.keras.metrics.AUC(name='val_auc'),
                     tf.keras.metrics.Precision(),
                     tf.keras.metrics.Recall(),
-                ],
+                    tf.keras.metrics.F1Score(threshold=0.5, average='micro'),
+                ]
 
             )
         else:

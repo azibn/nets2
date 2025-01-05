@@ -40,7 +40,7 @@ def create_model_with_params(cnn_instance, params):
             tf.keras.metrics.AUC(name='val_auc'),
             tf.keras.metrics.Precision(),
             tf.keras.metrics.Recall(),
-            tf.keras.metrics.BinaryAccuracy()
+            tf.keras.metrics.F1Score(threshold=0.5, average='micro'),
         ]
     )
     return model
