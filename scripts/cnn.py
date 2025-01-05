@@ -85,6 +85,13 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--optimise-bayes-name",
+    help="The study name of the optuna optimisation saved as an sqlite database. Default is 'cnn_optimisation'.",
+    default='cnn_optimisation',
+    dest="optimise_bayes_name",
+)
+
+parser.add_argument(
     "--optimise-RS",
     help="Optimise the hyperparameters using RandomSearchCV.",
     action="store_true",
@@ -340,7 +347,7 @@ if __name__ == "__main__":
             if args.optimise_bayes:
                 if args.optimise_bayes:
                     print("Optimising hyperparameters with Optuna...")
-                    best_params = optimise.optimise_hyperparameters(cnn, n_trials=100)
+                    best_params = optimise.optimise_hyperparameters(cnn, n_trials=100,name=args.optimise_bayes_name)
                     
                     print("Training final model with best parameters...")
                     final_model, history = optimise.train_final_model(

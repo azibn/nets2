@@ -61,20 +61,23 @@ def objective(trial, cnn_instance):
     
     model = create_model_with_params(cnn_instance, params)
 
+    train_labels = tf.cast(cnn_instance.ds.train_labels, tf.float32)
+    val_labels = tf.cast(cnn_instance.ds.val_labels, tf.float32)
+
     # Train model
     history = model.fit(
         cnn_instance.ds.train_data,
-        cnn_instance.ds.train_labels,
-        epochs=100,
+        train_labels,
+        epochs=200,
         batch_size=batch_size,
-        validation_data=(cnn_instance.ds.val_data, cnn_instance.ds.val_labels),
+        validation_data=(cnn_instance.ds.val_data, val_labels),
         verbose=0,
     )
 
     return history.history["val_auc"][-1]
 
-def optimise_hyperparameters(cnn_instance, n_trials=50):
-    name = 'cnn_optimisation'
+def optimise_hyperparameters(cnn_instance, n_trials=100,name='cnn_optimisation'):
+    name = name
     storage = f"sqlite:///{name}.db"
     study = optuna.create_study(
         direction="maximize",
@@ -104,12 +107,15 @@ def train_final_model(cnn_instance, best_params, epochs, seed):
     
     model = create_model_with_params(cnn_instance, best_params)
     
+    train_labels = tf.cast(cnn_instance.ds.train_labels, tf.float32)
+    val_labels = tf.cast(cnn_instance.ds.val_labels, tf.float32)
+
     history = model.fit(
         cnn_instance.ds.train_data,
-        cnn_instance.ds.train_labels,
+        train_labels,
         epochs=epochs,
         batch_size=best_params['batch_size'],
-        validation_data=(cnn_instance.ds.val_data, cnn_instance.ds.val_labels),
+        validation_data=(cnn_instance.ds.val_data, val_labels),
         verbose=1
     )
     

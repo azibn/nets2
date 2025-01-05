@@ -208,11 +208,15 @@ class ConvNN(object):
                 loss=self.loss,
                 metrics=[
                     "accuracy",
-                    tf.keras.metrics.AUC(name='val_auc'),
+                    tf.keras.metrics.AUC(),
                     tf.keras.metrics.Precision(),
                     tf.keras.metrics.Recall(),
-                    tf.keras.metrics.F1Score(threshold=0.5, average='micro'),
-                ]
+                    tf.keras.metrics.F1Score(
+                        threshold=0.5,
+                        average='micro', 
+                        dtype=tf.float32
+                    )
+                                    ]
 
             )
         else:
@@ -338,15 +342,18 @@ class ConvNN(object):
             log_dir = './logs'
             tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
 
+            train_labels = tf.cast(self.ds.train_labels, tf.float32)
+            val_labels = tf.cast(self.ds.val_labels, tf.float32)
+
             # CREATES MODEL BASED ON GIVEN RANDOM SEED
             self.create_model(seed)
             self.history = self.model.fit(
                 self.ds.train_data,
-                self.ds.train_labels,
+                train_labels,
                 epochs=epochs,
                 batch_size=batch_size,
                 shuffle=shuffle,
-                validation_data=(self.ds.val_data, self.ds.val_labels),
+                validation_data=(self.ds.val_data, val_labels),
                 callbacks = [tensorboard_callback] #, self.early_stopping] # ,reduce_lr, ]
             )
 
