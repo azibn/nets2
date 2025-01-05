@@ -37,7 +37,7 @@ def create_model_with_params(cnn_instance, params):
         loss="binary_crossentropy",
         metrics=[
             "accuracy",
-            tf.keras.metrics.AUC(),
+            tf.keras.metrics.AUC(name='val_auc'),
             tf.keras.metrics.Precision(),
             tf.keras.metrics.Recall(),
             tf.keras.metrics.BinaryAccuracy()
@@ -79,6 +79,7 @@ def optimise_hyperparameters(cnn_instance, n_trials=50):
     study = optuna.create_study(
         direction="maximize",
         study_name=f"{name}",
+        storage=storage,
         load_if_exists=True,
     )
     study.optimize(
