@@ -16,7 +16,8 @@ outputs/
 logs/
 modelplots/
 testdata/
-
+catalogs*
+model*
 
 ## stella stuff that i don't need
 docs/

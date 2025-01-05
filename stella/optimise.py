@@ -99,6 +99,7 @@ def optimise_hyperparameters(cnn_instance, n_trials=50):
 
 def train_final_model(cnn_instance, best_params, epochs, seed):
     """Train the final model using the best parameters"""
+    tf.keras.backend.clear_session()  # Clear memory
     tf.random.set_seed(seed)
     
     model = create_model_with_params(cnn_instance, best_params)

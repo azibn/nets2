@@ -268,6 +268,137 @@ class FlareDataSet(object):
         self.real = np.array(real, dtype=np.ndarray)
         self.model = np.array(model, dtype=np.ndarray)
         self.tpeaks = tpeaks  # in TBJD
+        print(f"Number of files loaded: {len(self.ids)}")
+
+    # def reformat_data(self, random_seed=321):
+    #     """
+    #     Reformats the data into `cadences`-sized array and assigns
+    #     a label based on flare times defined in the catalog.
+    #     """
+    #     ss = 300000
+    #     training_matrix = np.zeros((ss, self.cadences))
+    #     training_labels = np.zeros(ss, dtype=int)
+    #     training_peaks = np.zeros(ss)
+    #     training_ids = np.zeros(ss)
+
+    #     x = 0
+    #     print(f"Starting to process {len(self.time)} files")
+    #     dropped_files = []
+
+    #     for i in tqdm(range(len(self.time))):
+    #         flares = np.array([], dtype=int)
+    #         file_added = False
+
+    #         # Track file processing
+    #         current_file = {
+    #             'id': self.ids[i],
+    #             'n_peaks': len(self.tpeaks[i]),
+    #             'peaks_processed': 0,
+    #             'peaks_added': 0,
+    #             'reason_dropped': []
+    #         }
+
+    #         for peak in self.tpeaks[i]:
+    #             current_file['peaks_processed'] += 1
+                
+    #             # Find points around peak
+    #             arg = np.where(
+    #                 (self.time[i] > (peak - 0.08)) & (self.time[i] < (peak + 0.08))
+    #             )[0]
+
+    #             if len(arg) == 0:
+    #                 current_file['reason_dropped'].append(f"No points found around peak {peak}")
+    #                 continue
+
+    #             closest = arg[np.argmin(np.abs(peak - self.time[i][arg]))]
+    #             start = int(closest - self.cadences / 2)
+    #             end = int(closest + self.cadences / 2)
+
+    #             flare_region = np.arange(start, end, 1, dtype=int)
+
+    #             # Check window boundaries
+    #             if not ((start >= 0) and (end < len(self.time[i]))):
+    #                 current_file['reason_dropped'].append(f"Window out of bounds: start={start}, end={end}, len={len(self.time[i])}")
+    #                 continue
+
+    #             # Add example
+    #             try:
+    #                 training_peaks[x] = self.time[i][closest] + 0.0
+    #                 training_ids[x] = self.ids[i] + 0.0
+    #                 training_matrix[x] = self.flux[i][flare_region]
+    #                 training_labels[x] = 1
+    #                 x += 1
+    #                 current_file['peaks_added'] += 1
+    #                 file_added = True
+    #                 flares = np.append(flares, flare_region)
+    #             except Exception as e:
+    #                 current_file['reason_dropped'].append(f"Error adding example: {str(e)}")
+
+    #         if not file_added:
+    #             dropped_files.append(current_file)
+
+    #         # Process negative examples
+    #         time_removed = np.delete(self.time[i], flares)
+    #         flux_removed = np.delete(self.flux[i], flares)
+    #         flux_err_removed = np.delete(self.flux_err[i], flares)
+
+    #         nontime, nonflux, nonerr = break_rest(
+    #             time_removed, flux_removed, flux_err_removed, self.cadences
+    #         )
+            
+    #         for j in range(len(nonflux)):
+    #             if x >= ss:
+    #                 break
+    #             else:
+    #                 training_ids[x] = self.ids[i] + 0.0
+    #                 training_peaks[x] = nontime[j][int(self.cadences / 2)]
+    #                 training_matrix[x] = nonflux[j]
+    #                 training_labels[x] = 0
+    #                 x += 1
+
+    #     print("\nSummary of dropped files:")
+    #     for file in dropped_files:
+    #         print(f"\nFile ID {file['id']}:")
+    #         print(f"- Total peaks: {file['n_peaks']}")
+    #         print(f"- Peaks processed: {file['peaks_processed']}")
+    #         print(f"- Peaks added: {file['peaks_added']}")
+    #         print("- Reasons dropped:")
+    #         for reason in file['reason_dropped']:
+    #             print(f"  * {reason}")
+
+    #     print(f"\nBefore trimming arrays:")
+    #     print(f"- Total examples created: {x}")
+    #     print(f"- Positive examples: {np.sum(training_labels[:x] == 1)}")
+    #     print(f"- Negative examples: {np.sum(training_labels[:x] == 0)}")
+
+    #     # DELETE EXTRA END OF TRAINING MATRIX AND LABELS
+    #     training_matrix = np.delete(
+    #         training_matrix, np.arange(x, ss, 1, dtype=int), axis=0
+    #     )
+    #     labels = np.delete(training_labels, np.arange(x, ss, 1, dtype=int))
+    #     training_peaks = np.delete(training_peaks, np.arange(x, ss, 1, dtype=int))
+    #     training_ids = np.delete(training_ids, np.arange(x, ss, 1, dtype=int))
+
+    #     print(f"\nAfter trimming arrays:")
+    #     print(f"- Total examples: {len(labels)}")
+    #     print(f"- Positive examples: {np.sum(labels == 1)}")
+    #     print(f"- Negative examples: {np.sum(labels == 0)}")
+
+    #     ids, matrix, label, peaks = do_the_shuffle(
+    #         training_matrix, labels, training_peaks, training_ids, self.frac_balance
+    #     )
+
+    #     print(f"\nAfter shuffling and balancing:")
+    #     print(f"- Total examples: {len(label)}")
+    #     print(f"- Positive examples: {np.sum(label == 1)}")
+    #     print(f"- Negative examples: {np.sum(label == 0)}")
+
+    #     self.labels = label
+    #     self.original_labels = np.copy(label)
+    #     self.training_peaks = peaks
+    #     self.training_ids = ids
+    #     self.training_matrix = matrix
+
 
     def reformat_data(self, random_seed=321):
         """
@@ -296,6 +427,8 @@ class FlareDataSet(object):
         training_ids = np.zeros(ss)
 
         x = 0
+
+        print(f"Starting to process {len(self.time)} files")
 
         #    def print_range_around_index(arr, idx, window_size=20):
         #        start_index = max(0, idx - window_size)
@@ -350,6 +483,7 @@ class FlareDataSet(object):
                         except IndexError:
                             fails.append(self.ids)
                             continue
+      
 
             time_removed = np.delete(self.time[i], flares)
             flux_removed = np.delete(self.flux[i], flares)
@@ -369,6 +503,7 @@ class FlareDataSet(object):
                     training_labels[x] = 0
                     x += 1
 
+
         # DELETE EXTRA END OF TRAINING MATRIX AND LABELS
         training_matrix = np.delete(
             training_matrix, np.arange(x, ss, 1, dtype=int), axis=0
@@ -376,6 +511,7 @@ class FlareDataSet(object):
         labels = np.delete(training_labels, np.arange(x, ss, 1, dtype=int))
         training_peaks = np.delete(training_peaks, np.arange(x, ss, 1, dtype=int))
         training_ids = np.delete(training_ids, np.arange(x, ss, 1, dtype=int))
+
 
         ids, matrix, label, peaks = do_the_shuffle(
             training_matrix, labels, training_peaks, training_ids, self.frac_balance

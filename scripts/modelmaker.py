@@ -33,18 +33,16 @@ import stella
 MISSION_CONFIGS = {
     'TESS': {
         'time': 'TIME',
-        'flux': 'PCA_FLUX',  # or 'PDCSAP_FLUX'
+        'flux': 'PCA_FLUX', 
         'quality': 'QUALITY',
         'flux_err': 'FLUX_ERR',
-        #'quality_mask': 0,  # good quality value
-        'time_format': 'bjd',  # or whatever the time format is
+        'time_format': 'btjd', 
     },
     'Kepler': {
         'time': 'TIME',
         'flux': 'PDCSAP_FLUX',
         'quality': 'SAP_QUALITY',
         'flux_err': 'PDCSAP_FLUX_ERR',
-        #'quality_mask': 0,
         'time_format': 'bkjd',
     },
     'K2': {
@@ -52,7 +50,6 @@ MISSION_CONFIGS = {
         'flux': 'PDCSAP_FLUX',
         'quality': 'SAP_QUALITY',
         'flux_err': 'PDCSAP_FLUX_ERR',
-        #'quality_mask': 0,
         'time_format': 'bkjd',
     }
 }
@@ -61,7 +58,7 @@ model_functions = {
     "exocomet": lambda target_ID: comet(target_ID, folder=args.folder,mission=args.mission),
     "exoplanet": lambda target_ID, r_star, m_star: exoplanet(target_ID, folder=args.folder,r_star=r_star, m_star=m_star,mission=args.mission),
     "binary": lambda target_ID, r_star, m_star: exoplanet(
-        target_ID, folder=args.folder, r_star=r_star,m_star=m_star,binary=True
+        target_ID, folder=args.folder, r_star=r_star,m_star=m_star,binary=True,mission=args.mission
     ),
     "sines": lambda target_ID: sines(target_ID, folder=args.folder)
 }
@@ -91,56 +88,32 @@ def calculate_timestep(table):
 
 
 def clean_data(table):
-    """
-    Function: Interpolating missing data points, ensuring equal time gaps between points.
-    Returns five numpy arrays: time, flux, quality, real, and flux_error. Real is 0 if data point interpolated, 1 otherwise.
-
-    Parameters:
-    :table (astropy.table.table): The input table containing time-series data.
-
-    Returns:
-    :time (numpy.ndarray): An array of timestamps for each data point, including the interpolated points.
-    :flux (numpy.ndarray): An array of flux values for each data point, including the interpolated points.
-    :quality (numpy.ndarray): An array indicating the quality of each data point, including the interpolated points.
-    :real (numpy.ndarray): An array indicating whether each data point is real (1) or interpolated (0).
-    :flux_error (numpy.ndarray): An array of flux error values for each data point, including the interpolated points.
-    """
-
     time = []
     flux = []
     quality = []
     real = []
     flux_error = []
     timestep = calculate_timestep(table)
-    factor = (1 / 48) / timestep
+    factor = (1 / 48) / timestep  # Scale factor for any cadence
     
-    gap_threshold = 0.5
-
     for row in table:
         ti, fi, qi, fei = row
 
         if len(time) > 0:
-            current_diff = ti - time[-1]
             steps = int(round((ti - time[-1]) / timestep * factor))
+            if steps > 1:
+                fluxstep = (fi - flux[-1]) / steps
+                fluxerror_step = (fei - flux_error[-1]) / steps
 
-            # Only interpolate if gap is smaller than 1 day
-            if current_diff <= gap_threshold:
-                if steps > 1:
-                    fluxstep = (fi - flux[-1]) / steps
-                    fluxerror_step = (fei - flux_error[-1]) / steps
+                # Mark as real if 3 or fewer points (relaxed from 2)
+                set_real = 1 if steps <= 3 else 0
 
-                    # For small gaps, pretend interpolated data is real
-                    if steps > 2:
-                        set_real = 0
-                    else:
-                        set_real = 1
-
-                    for _ in range(steps - 1):
-                        time.append(timestep + time[-1])
-                        flux.append(fluxstep + flux[-1])
-                        flux_error.append(fluxerror_step + flux_error[-1])
-                        quality.append(0)
-                        real.append(set_real)
+                for _ in range(steps - 1):
+                    time.append(timestep + time[-1])
+                    flux.append(fluxstep + flux[-1])
+                    flux_error.append(fluxerror_step + flux_error[-1])
+                    quality.append(0)
+                    real.append(set_real)
 
         time.append(ti)
         flux.append(fi)
@@ -197,9 +170,11 @@ def prepare_lightcurve(file, mission='TESS'):
     """
     config = MISSION_CONFIGS[mission]
     
+    # Import lightcurve with mission-specific configuration
     lc, lc_info = import_lightcurve(file, drop_bad_points=True)
     lcc = lc.copy()
     
+    # Apply quality mask based on mission configuration
     lcc = lcc[lcc[config['quality']] == 0]
     
     # Select relevant columns using mission configuration
@@ -212,7 +187,8 @@ def prepare_lightcurve(file, mission='TESS'):
         lc[config['time']], 
         lc[config['flux']], 
         method="median", 
-        window_length=1)
+        window_length=1
+    )
     
     rms = np.nanstd(flat_flux)
     diff = np.diff(lc[config['time']])
@@ -229,7 +205,7 @@ def prepare_lightcurve(file, mission='TESS'):
         "flat_flux": flat_flux,
         "rms": rms,
         "diff": diff,
-        "large_gaps_indices": large_gaps_indices
+        "large_gaps_indices": large_gaps_indices,
     }
 
 
@@ -250,7 +226,7 @@ def is_valid_t0(t0, time, large_gaps_indices, diff):
 
     """
     for index in large_gaps_indices:
-        if time[index] - 2 <= t0 <= time[index + 1] + 1.5:
+        if time[index] - 1 <= t0 <= time[index + 1] + 1:
             return False
         if (
             index < len(time) - 1
@@ -258,9 +234,9 @@ def is_valid_t0(t0, time, large_gaps_indices, diff):
             and abs(t0 - time[index + 1]) < 1.5
         ):
             return False
-        if index > 0 and diff[index - 1] > 0.5 and abs(t0 - time[index]) < 4:
+        if index > 0 and diff[index - 1] > 0.5 and abs(t0 - time[index]) < 1.5:
             return False
-    if t0 <= time[0] + 1.5 or t0 >= time[-1] - 2:
+    if t0 <= time[0] + 1.5 or t0 >= time[-1] - 1.5:
         return False
     return True
 
@@ -288,6 +264,7 @@ def find_valid_injection_time(lc, window_size, max_attempts=20):
 
 def check_for_unscaled(flux):
     """ensures that all flux values are above zero in the comet function, otherwise do it again."""
+
 
     return np.all(flux > 0)
 
@@ -319,8 +296,8 @@ def comet(
 
     file: path to file
     folder: folder to save the output lightcurve
-    min_snr: Minimum SNR (default SNR=5).
-    max_snr: Maximum SNR (default SNR=20).
+    min_snr: Minimum SNR (default SNR=7).
+    max_snr: Maximum SNR (default SNR=12).
     window_size: Number of cadences representing the window size (default 84, corresponding to 3.5 days)
     max_retries: Maximum number of retries for model creation (default 50)
     method: Method to create the comet model ("comet_curve" or "skewed_gaussian")
@@ -331,9 +308,7 @@ def comet(
     if np.isnan(lc["rms"]):
         return None
 
-
     snr = SNR(lc["rms"], min_snr, max_snr)
-
 
     valid_model_found = False
     retry_count = 0
@@ -347,13 +322,11 @@ def comet(
 
         t0 = injection_time["t0"]
 
-
-
         if method == "comet_curve" or method is None:
 
-            sigma = np.round(np.random.uniform(0.25, 0.75), 3) # 0.25-0.7
-            tail = np.round(np.random.uniform(0.35, 0.7), 3) # 0.35-0.5
-            shape = np.round(np.random.uniform(1, 3.5), 3) # 1.5-4
+            sigma = np.round(np.random.uniform(0.25, 0.6), 3) # 0.25-0.7
+            tail = np.round(np.random.uniform(0.45, 0.85), 3) # 0.35-0.5
+            shape = np.round(np.random.uniform(1, 4), 3) # 1.5-4
             model = 1 - models.comet_curve2(lc["time"], snr["amplitude"], t0, sigma=sigma, tail=tail, shape=shape)
         
         elif method == "skewed_gaussian":
@@ -363,7 +336,7 @@ def comet(
 
         f = model * (lc["flux"] / np.nanmedian(lc["flux"]))
         f_scaled = scale_relative_to_baseline(f)
-    
+
         if np.all(f_scaled >= 0):
             valid_model_found = True
         else:
@@ -387,51 +360,31 @@ def comet(
         target_id = lc['lc_info']['EPIC_ID']
         segment = f"c{lc['lc_info']['campaign']:02d}"
 
-    # if save_model:
-    #     np.save(
-    #         f"{folder}/{target_id}_{segment}_{args.transit}.npy",
-    #         np.array([
-    #             lc["time"][lc["real"] == 1],
-    #             f_scaled[lc["real"] == 1],
-    #             fluxerror[lc["real"] == 1],
-    #             lc["real"][lc["real"] == 1],
-    #             model[lc["real"] == 1],
-    #             f[lc["real"] == 1],
-    #         ]),
-    #     )
-    # else:
-    #     np.save(
-    #         f"{folder}/{target_id}_{segment}_{args.transit}.npy",
-    #         np.array(
-    #             [
-    #                 lc["time"][lc["real"] == 1],
-    #                 f_scaled[lc["real"] == 1],
-    #                 fluxerror[lc["real"] == 1],
-    #                 lc["real"][lc["real"] == 1],
-    #                 f[lc["real"] == 1],
-    #             ]
-    #         ),
-    #     )
-
     if save_model:
-        np.save(f"{folder}/{target_id}_{segment}_{args.transit}.npy",
-        np.array([
-            lc["time"],
-            f_scaled,
-            fluxerror,
-            lc["real"],
-            model,
-            f,
-        ])),
+        np.save(
+            f"{folder}/{target_id}_{segment}_{args.transit}.npy",
+            np.array([
+                lc["time"][lc['real'] == 1],
+                f_scaled[lc['real'] == 1],
+                fluxerror[lc['real'] == 1],
+                lc["real"][lc['real'] == 1],
+                model[lc['real'] == 1],
+                f[lc['real'] == 1],
+            ]),
+        )
     else:
-        np.save(f"{folder}/{target_id}_{segment}_{args.transit}.npy",
-        np.array([
-            lc,
-            f_scaled,
-            fluxerror,
-            lc,
-            f,
-        ])),
+        np.save(
+            f"{folder}/{target_id}_{segment}_{args.transit}.npy",
+            np.array(
+                [
+                    lc["time"][lc['real'] == 1],
+                    f_scaled[lc['real'] == 1],
+                    fluxerror[lc['real'] == 1],
+                    lc["real"][lc['real'] == 1],
+                    f[lc['real'] == 1],
+                ]
+            ),
+        )
     ## HAVE ONLY LEFT TIC AS A DICT ENTRY BECAUSE OF OTHER CODE DEPENDENCIES. CAN BE CHANGED LATER.
     return [{"tic": target_id, "time": t0, "snr": snr['snr'], "rms": lc['rms']}] 
 
@@ -508,12 +461,23 @@ def exoplanet(file, folder, m_star, r_star, period_min=3, period_max=700, binary
 
         if not valid_model_found:
             return None
+        
+
+        if args.mission == 'TESS':
+            target_id = lc['lc_info']['TIC_ID']
+            segment = f"sector{lc['lc_info']['sector']:02d}"
+        elif args.mission == 'Kepler':
+            target_id = lc['lc_info']['KEPLERID']
+            segment = f"q{lc['lc_info']['quarter']:02d}"
+        elif args.mission == 'K2':
+            target_id = lc['lc_info']['EPIC_ID']
+            segment = f"c{lc['lc_info']['campaign']:02d}"
 
         fluxerror = np.array(lc["flux_error"]) / np.nanmedian(lc["flux"])
         tic = lc["lc_info"]["TIC_ID"]
-        np.save(f"{folder}/{tic}_sector{sector}_{args.transit}.npy", 
-                np.array([lc['time'], injected_flux_scaled, fluxerror, lc['real'], model,
-                          injected_flux]))
+        np.save(f"{folder}/{target_id}_{segment}_{args.transit}.npy", 
+                np.array([lc['time'][lc['real'] == 1], injected_flux_scaled[lc['real'] == 1], fluxerror[lc['real'] == 1], lc['real'][lc['real'] == 1], model[lc['real'] == 1],
+                          injected_flux[lc['real'] == 1]]))
 
         return [{"tic": tic, "time": t0, "snr": snr['snr'], "rms": lc['rms']}]
     
@@ -536,7 +500,7 @@ def is_valid_sine_time(t, time, window_size=4):
     return True
 
 
-def sines(file, folder, min_period=1, max_period=3, 
+def sines(file, folder, min_period=1.25, max_period=3, 
                        min_amplitude=0.005, max_amplitude=0.01, 
                        prominence_factor=0.01, min_distance_days=1):
     
@@ -592,8 +556,17 @@ def sines(file, folder, min_period=1, max_period=3,
     tic = lc["lc_info"]["TIC_ID"]
     sector = f"{lc['lc_info']['sector']:02d}"
 
+    if args.mission == 'TESS':
+        target_id = lc['lc_info']['TIC_ID']
+        segment = f"sector{lc['lc_info']['sector']:02d}"
+    elif args.mission == 'Kepler':
+        target_id = lc['lc_info']['KEPLERID']
+        segment = f"q{lc['lc_info']['quarter']:02d}"
+    elif args.mission == 'K2':
+        target_id = lc['lc_info']['EPIC_ID']
+        segment = f"c{lc['lc_info']['campaign']:02d}"
 
-    np.save(f"{folder}/{tic}_sector{sector}_{args.transit}.npy", 
+    np.save(f"{folder}/{target_id}_{segment}_{args.transit}.npy", 
         np.array([lc['time'], normalised_flux, lc['flux_error'], lc['real']]))
     
     return [{"tic": tic, "time": t, "snr": None, "rms": None} for t in valid_times]
@@ -627,7 +600,7 @@ def save_training_set_plots(ds, folder_name):
 
     ### PLOTTING POSITIVE CLASS
     data = ds.train_data[ind_pc]
-    tic_ids = ds.training_ids[ind_pc]
+
 
     num_sets = data.shape[0] // 100
 
@@ -641,7 +614,7 @@ def save_training_set_plots(ds, folder_name):
         for i in range(start_index, end_index):
             plot_index = i % 100
             axs[plot_index].plot(data[i, :, 0])
-            axs[plot_index].set_title(f"Plot {int(tic_ids[i])}")
+            axs[plot_index].set_title(f"Plot {i}")
 
         for j in range(end_index - start_index, len(axs)):
             axs[j].axis('off')
@@ -678,8 +651,7 @@ def main(args):
         
 
     with tqdm(total=args.number, desc="Creating models") as pbar:
-        successful_models = 0
-        file_index = 0
+
         while successful_models < args.number:
             if file_index >= len(files):
                 random.shuffle(files)
