@@ -18,6 +18,7 @@ modelplots/
 testdata/
 catalogs*
 model*
+inj-rec*
 
 ## stella stuff that i don't need
 docs/
