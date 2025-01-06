@@ -18,7 +18,8 @@ from scipy.stats import loguniform
 from sklearn.model_selection import RandomizedSearchCV
 from tensorflow.keras.regularizers import l2
 from scikeras.wrappers import KerasClassifier
-   
+from astropy.table import Table, Column
+
 sys.path.insert(1, 'scripts')
 sys.path.insert(1, 'stella')
 
@@ -347,7 +348,7 @@ if __name__ == "__main__":
             if args.optimise_bayes:
                 if args.optimise_bayes:
                     print("Optimising hyperparameters with Optuna...")
-                    best_params = optimise.optimise_hyperparameters(cnn, n_trials=100,name=args.optimise_bayes_name)
+                    best_params = optimise.optimise_hyperparameters(cnn, n_trials=100, name=args.optimise_bayes_name)
                     
                     print("Training final model with best parameters...")
                     final_model, history = optimise.train_final_model(
@@ -355,6 +356,45 @@ if __name__ == "__main__":
                         best_params, 
                         epochs=args.e, 
                         seed=seed
+                    )
+                    
+                    # Create and populate val_pred_table
+                    val_preds = final_model.predict(cnn.ds.val_data)
+                    val_preds = np.reshape(val_preds, len(val_preds))
+                    
+                    # Create tables
+                    cnn.history_table = Table()
+                    cnn.val_pred_table = Table([
+                        cnn.ds.val_ids,
+                        cnn.ds.val_labels,
+                        cnn.ds.val_tpeaks,
+                        cnn.ds.val_labels_ori,
+                    ], names=["tic", "gt", "tpeak", "labels"])
+                    
+                    formatted_seed = f"{seed:04}"
+                    
+                    # Add predictions to validation table
+                    cnn.val_pred_table.add_column(Column(val_preds, name=f"pred_s{formatted_seed}"))
+                    
+                    # Add history metrics to history table
+                    for metric, values in history.history.items():
+                        cnn.history_table.add_column(Column(values, name=f"{metric}_s{formatted_seed}"))
+                    
+                    # Save model and tables
+                    fmt_tail = f"_s{seed:04d}_i{args.e:04d}_b{cnn.frac_balance}"
+                    model_fmt = "ensemble" + fmt_tail + ".h5"
+                    
+                    final_model.save(os.path.join(cnn.output_dir, model_fmt), overwrite=True)
+                    
+                    fmt_table = f"_i{args.e:04d}_b{cnn.frac_balance}.txt"
+                    hist_fmt = "ensemble_histories" + fmt_table
+                    pred_fmt = "ensemble_predval" + fmt_table
+                    
+                    cnn.history_table.write(os.path.join(cnn.output_dir, hist_fmt), format="ascii")
+                    cnn.val_pred_table.write(
+                        os.path.join(cnn.output_dir, pred_fmt),
+                        format="ascii",
+                        fast_writer=False,
                     )
                     
                     cnn.model = final_model
