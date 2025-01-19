@@ -989,18 +989,21 @@ class ConvNN(object):
 
 
     def evaluate_2xN(self, x_val, y_true, y_binary, class_names, seed, save=True, save_path='plots/'):
-
         # Get binary predictions
         y_pred_binary = self.model.predict(x_val)
         y_pred_binary_classes = (y_pred_binary > 0.5).astype(int).reshape(-1)
 
-        # Get unique classes in y_true
-        unique_classes = np.unique(y_true)
-        print("Unique classes in y_true:", unique_classes)
+        # Get unique classes and create a mapping
+        unique_classes = np.sort(np.unique(y_true))
+        class_mapping = {old: new for new, old in enumerate(unique_classes)}
+        
+        # Map classes to consecutive integers
+        y_true_mapped = np.array([class_mapping[x] for x in y_true])
+        n_classes = len(unique_classes)
 
         # Create 2xN confusion matrix
-        cm_2xN = np.zeros((2, len(class_names)), dtype=int)
-        for true_label, pred_label in zip(y_true, y_pred_binary_classes):
+        cm_2xN = np.zeros((2, n_classes), dtype=int)
+        for true_label, pred_label in zip(y_true_mapped, y_pred_binary_classes):
             cm_2xN[pred_label, true_label] += 1
 
         # Create plot without displaying it
@@ -1098,3 +1101,130 @@ class ConvNN(object):
     #     plt.close()
 
     #     return cm_2x2, y_pred_binary_classes
+
+    def get_gradcam(self, input_data, layer_name='conv1d_1'):
+        """
+        Generate Grad-CAM heatmap for a 1D CNN model
+        
+        Parameters:
+        -----------
+        input_data : numpy.ndarray
+            Input data of shape (batch_size, timesteps, 1)
+        layer_name : str
+            Name of the target convolutional layer for Grad-CAM
+            
+        Returns:
+        --------
+        numpy.ndarray
+            Grad-CAM heatmap
+        """
+        grad_model = tf.keras.models.Model(
+            [self.model.inputs],
+            [self.model.get_layer(layer_name).output, self.model.output]
+        )
+        
+        with tf.GradientTape() as tape:
+            conv_output, predictions = grad_model(input_data)
+            class_channel = predictions[:, 0]  # Binary classification
+            
+        # Gradient of the prediction with regard to the output feature map
+        grads = tape.gradient(class_channel, conv_output)
+        
+        # Vector of mean intensity of gradients over channels
+        pooled_grads = tf.reduce_mean(grads, axis=(0, 1))
+        
+        # Weight the conv layer output with the computed gradients
+        conv_output = conv_output[0]
+        heatmap = conv_output @ pooled_grads[..., tf.newaxis]
+        heatmap = tf.squeeze(heatmap)
+        
+        # Normalize the heatmap
+        heatmap = tf.maximum(heatmap, 0) / tf.math.reduce_max(heatmap)
+        
+        return heatmap.numpy()
+
+def plot_gradcam(self, time_series, heatmap, predictions, true_label, save_path=None):
+        """
+        Plot the original time series with Grad-CAM heatmap overlay
+        
+        Parameters:
+        -----------
+        time_series : numpy.ndarray
+            Original input time series
+        heatmap : numpy.ndarray
+            Grad-CAM heatmap
+        predictions : float
+            Model prediction score
+        true_label : int
+            True class label
+        save_path : str or None
+            Path to save visualization
+        """
+        plt.figure(figsize=(12, 4))
+        
+        # Plot original time series
+        plt.plot(range(len(time_series)), time_series, color='blue', alpha=0.6, label='Light curve')
+        
+        # Resize heatmap if necessary
+        if len(heatmap) != len(time_series):
+            x_new = np.linspace(0, len(time_series), len(heatmap))
+            x_original = np.linspace(0, len(time_series), len(time_series))
+            heatmap = np.interp(x_original, x_new, heatmap)
+        
+        # Plot heatmap overlay
+        plt.fill_between(range(len(time_series)), time_series.flatten(), 
+                        alpha=0.3, color='red', 
+                        weights=heatmap, label='Grad-CAM')
+        
+        plt.title(f"Grad-CAM Analysis\nTrue Label: {true_label}, Prediction Score: {predictions:.3f}")
+        plt.xlabel("Time (cadences)")
+        plt.ylabel("Normalized Flux")
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        
+        if save_path:
+            plt.savefig(f"{save_path}/gradcam_label{true_label}_pred{predictions:.3f}.png", 
+                        dpi=300, bbox_inches='tight')
+            plt.close()
+        else:
+            plt.show()
+
+def gradcam_analysis(self, layer_name='conv1d_1', example_indices=None, save_path=None,dataset='validation'):
+        """
+        Perform Grad-CAM analysis on specified examples from validation data
+        
+        Parameters
+        ----------
+        layer_name : str
+            Name of the target convolutional layer for Grad-CAM
+        example_indices : list or None
+            Indices of examples to analyze. If None, analyzes first 5 examples
+        save_path : str or None
+            Path to save visualizations. If None, displays them
+        dataset: str 
+            The dataset to analyse. Default is 'validation'. Other option is 'training'.
+        """
+        if example_indices is None:
+            example_indices = range(5)
+
+        if dataset == 'training':
+            data = self.train_data
+            labels = self.train_labels
+        else: 
+            data = self.val_data
+            labels = self.val_labels
+            
+        if save_path:
+            os.makedirs(save_path, exist_ok=True)
+
+        for idx in example_indices:
+            example_data = data[idx]
+            true_label = labels[idx]
+            input_data = example_data.reshape(1, *example_data.shape)
+            
+            # Get model prediction
+            pred = self.model.predict(input_data, verbose=0)[0][0]
+            
+            # Generate and plot Grad-CAM
+            heatmap = self.get_gradcam(input_data, layer_name)
+            self.plot_gradcam(example_data, heatmap, pred, true_label, save_path)
