@@ -87,18 +87,10 @@ parser.add_argument(
 
 parser.add_argument(
     "--optimise-bayes-name",
-    help="The study name of the optuna optimisation saved as an sqlite database. Default is 'cnn_optimisation'.",
-    default='cnn_optimisation',
+    help="The study name of the optuna optimisation saved as an sqlite database. Default is 'cnn_optimisation.db'.",
+    default='cnn_optimisation.db',
     dest="optimise_bayes_name",
 )
-
-parser.add_argument(
-    "--optimise-RS",
-    help="Optimise the hyperparameters using RandomSearchCV.",
-    action="store_true",
-    dest="optimise_RS",
-)
-
 
 parser.add_argument("--merge", nargs="+", help="Paths to additional datasets to merge",dest='merge')
 parser.add_argument(
@@ -148,7 +140,10 @@ def plot_metrics(cnn, seed):
     Plots the output metrics from the CNN model for a single seed.
     """
     # Create a custom colormap
-    custom_cmap = mcolors.ListedColormap(["yellow", "darkblue", "red", "green"])
+    unique_classes = np.unique(cnn.val_pred_table["labels"])
+    n_classes = len(unique_classes)
+    colors = plt.cm.viridis(np.linspace(0, 1, n_classes))  # Using viridis colormap
+    custom_cmap = mcolors.ListedColormap(colors)
 
     _, axes = plt.subplots(2, 2, figsize=(18, 12))
     formatted_seed = f"{seed:04}"
@@ -164,7 +159,9 @@ def plot_metrics(cnn, seed):
     axes[0, 0].set_xlabel("Tpeak [BJD - 2457000]")
     axes[0, 0].set_ylabel("Probability of Exocomet")
     plt.colorbar(
-        sc, ax=axes[0, 0], ticks=np.arange(4), boundaries=np.arange(4 + 1) - 0.5
+        sc, ax=axes[0, 0], 
+        ticks=unique_classes,
+        boundaries=np.arange(n_classes + 1) - 0.5
     )
 
     # Plot loss
@@ -344,90 +341,72 @@ if __name__ == "__main__":
     decision = input("Proceed? ")
 
     if (decision == "y") or (decision == "yes"):
-        for seed in args.seed:
-            if args.optimise_bayes:
-                if args.optimise_bayes:
-                    print("Optimising hyperparameters with Optuna...")
-                    best_params = optimise.optimise_hyperparameters(cnn, n_trials=100, name=args.optimise_bayes_name)
+    
+        if args.optimise_bayes:
+            print("Optimising hyperparameters with Optuna...")
+            best_params = optimise.optimise_hyperparameters(cnn, n_trials=100, name=args.optimise_bayes_name)
+            
+            print("Training final model with best parameters...")
+            for seed in args.seed:
+                final_model, history = optimise.train_final_model(
+                    cnn, 
+                    best_params, 
+                    epochs=args.e, 
+                    seed=seed
+                )
                     
-                    print("Training final model with best parameters...")
-                    final_model, history = optimise.train_final_model(
-                        cnn, 
-                        best_params, 
-                        epochs=args.e, 
-                        seed=seed
-                    )
-                    
-                    # Create and populate val_pred_table
-                    val_preds = final_model.predict(cnn.ds.val_data)
-                    val_preds = np.reshape(val_preds, len(val_preds))
-                    
-                    # Create tables
-                    cnn.history_table = Table()
-                    cnn.val_pred_table = Table([
-                        cnn.ds.val_ids,
-                        cnn.ds.val_labels,
-                        cnn.ds.val_tpeaks,
-                        cnn.ds.val_labels_ori,
-                    ], names=["tic", "gt", "tpeak", "labels"])
-                    
-                    formatted_seed = f"{seed:04}"
-                    
-                    # Add predictions to validation table
-                    cnn.val_pred_table.add_column(Column(val_preds, name=f"pred_s{formatted_seed}"))
-                    
-                    # Add history metrics to history table
-                    for metric, values in history.history.items():
-                        cnn.history_table.add_column(Column(values, name=f"{metric}_s{formatted_seed}"))
-                    
-                    # Save model and tables
-                    fmt_tail = f"_s{seed:04d}_i{args.e:04d}_b{cnn.frac_balance}"
-                    model_fmt = "ensemble" + fmt_tail + ".h5"
-                    
-                    final_model.save(os.path.join(cnn.output_dir, model_fmt), overwrite=True)
-                    
-                    fmt_table = f"_i{args.e:04d}_b{cnn.frac_balance}.txt"
-                    hist_fmt = "ensemble_histories" + fmt_table
-                    pred_fmt = "ensemble_predval" + fmt_table
-                    
-                    cnn.history_table.write(os.path.join(cnn.output_dir, hist_fmt), format="ascii")
-                    cnn.val_pred_table.write(
-                        os.path.join(cnn.output_dir, pred_fmt),
-                        format="ascii",
-                        fast_writer=False,
-                    )
-                    
-                    cnn.model = final_model
-                    cnn.history = history
-                    
-                    print("CNN complete. Plotting metrics.")
-                    plot_metrics(cnn, seed)
+                # Create and populate val_pred_table
+                val_preds = final_model.predict(cnn.ds.val_data)
+                val_preds = np.reshape(val_preds, len(val_preds))
+                
+                # Create tables
+                cnn.history_table = Table()
+                cnn.val_pred_table = Table([
+                    cnn.ds.val_ids,
+                    cnn.ds.val_labels,
+                    cnn.ds.val_tpeaks,
+                    cnn.ds.val_labels_ori,
+                ], names=["tic", "gt", "tpeak", "labels"])
+                
+                formatted_seed = f"{seed:04}"
+                
+                # Add predictions to validation table
+                cnn.val_pred_table.add_column(Column(val_preds, name=f"pred_s{formatted_seed}"))
+                
+                # Add history metrics to history table
+                for metric, values in history.history.items():
+                    cnn.history_table.add_column(Column(values, name=f"{metric}_s{formatted_seed}"))
+                
+                # Save model 
+                fmt_tail = f"_s{seed:04d}_i{args.e:04d}_b{cnn.frac_balance}"
+                model_fmt = "ensemble" + fmt_tail + ".h5"
+                
+                final_model.save(os.path.join(cnn.output_dir, model_fmt), overwrite=True)
+                
+                # histories and predictions are saved for the final optimised model (it is optional for the non-optimised ones)
+                fmt_table = f"_i{args.e:04d}_b{cnn.frac_balance}.txt"
+                hist_fmt = "ensemble_histories" + fmt_table
+                pred_fmt = "ensemble_predval" + fmt_table
+                
+                cnn.history_table.write(os.path.join(cnn.output_dir, hist_fmt), format="ascii",overwrite=True)
+                cnn.val_pred_table.write(
+                    os.path.join(cnn.output_dir, pred_fmt),
+                    format="ascii",
+                    fast_writer=False,
+                    overwrite=True
+                )
+                
+                cnn.model = final_model
+                cnn.history = history
+                
+                print("CNN complete. Plotting metrics.")
+                plot_metrics(cnn, seed)
 
-            elif args.optimise_RS:
-                    print("Using RandomSearchCV to optimise hyperparameters...")
-
-                    model = KerasClassifier(build_fn=model_RS, epochs=150, batch_size=128, verbose=0)
-
-                    param_dist = {
-                    'kernel1': [7, 9, 11, 13, 15],
-                    'kernel2': [3, 5, 7],
-                    'pool': [2, 3, 4, 5],
-                    'filter1': [16, 32, 64, 128, 256, 512],
-                    'filter2': [64, 128, 256, 512, 1024],
-                    'dense': [32, 64, 128, 256, 512],
-                    'dropout': [0.2, 0.3, 0.4, 0.5],
-                    'l2val': loguniform(0.001, 0.01)
-                }
-
-                    random_search = RandomizedSearchCV(estimator=model, param_distributions=param_dist, n_iter=100, cv=5, verbose=2, n_jobs=33)
-                    random_search_result = random_search.fit(dataset.train_data, dataset.train_labels)
-                    best_params = random_search_result.best_params_
-                    print("Best parameters found: ", best_params)
-
-            else:
+        else:
+            for seed in args.seed:
                 cnn.train_models(
                     seeds=seed, epochs=args.e, batch_size=args.batch_size, shuffle=True
                 )
 
-            print("CNN complete. Plotting metrics.")
-            plot_metrics(cnn, seed)
+                print("CNN complete. Plotting metrics.")
+                plot_metrics(cnn, seed)

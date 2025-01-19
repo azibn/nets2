@@ -76,9 +76,9 @@ def objective(trial, cnn_instance):
 
     return history.history["val_auc"][-1]
 
-def optimise_hyperparameters(cnn_instance, n_trials=100,name='cnn_optimisation'):
+def optimise_hyperparameters(cnn_instance, n_trials=100,name='cnn_optimisation.db'):
     name = name
-    storage = f"sqlite:///{name}.db"
+    storage = f"sqlite:///{name}" # must end with .db 
     study = optuna.create_study(
         direction="maximize",
         study_name=f"{name}",
