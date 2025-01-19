@@ -1143,7 +1143,8 @@ class ConvNN(object):
         
         return heatmap.numpy()
 
-def plot_gradcam(self, time_series, heatmap, predictions, true_label, save_path=None):
+    def plot_gradcam(self, time_series, heatmap, predictions, binary_label, 
+                    original_label=None, save_path=None):
         """
         Plot the original time series with Grad-CAM heatmap overlay
         
@@ -1155,15 +1156,18 @@ def plot_gradcam(self, time_series, heatmap, predictions, true_label, save_path=
             Grad-CAM heatmap
         predictions : float
             Model prediction score
-        true_label : int
-            True class label
+        binary_label : int
+            Binary class label (0 or 1)
+        original_label : int, optional
+            Original class label if available
         save_path : str or None
             Path to save visualization
         """
         plt.figure(figsize=(12, 4))
         
         # Plot original time series
-        plt.plot(range(len(time_series)), time_series, color='blue', alpha=0.6, label='Light curve')
+        plt.plot(range(len(time_series)), time_series, color='blue', 
+                alpha=0.6, label='Light curve')
         
         # Resize heatmap if necessary
         if len(heatmap) != len(time_series):
@@ -1176,20 +1180,30 @@ def plot_gradcam(self, time_series, heatmap, predictions, true_label, save_path=
                         alpha=0.3, color='red', 
                         weights=heatmap, label='Grad-CAM')
         
-        plt.title(f"Grad-CAM Analysis\nTrue Label: {true_label}, Prediction Score: {predictions:.3f}")
+        # Create title with both labels if original label is available
+        title = f"Grad-CAM Analysis\nBinary Label: {binary_label}, Prediction Score: {predictions:.3f}"
+        if original_label is not None:
+            title += f"\nOriginal Class: {original_label}"
+        
+        plt.title(title)
         plt.xlabel("Time (cadences)")
         plt.ylabel("Normalized Flux")
         plt.legend()
         plt.grid(True, alpha=0.3)
         
         if save_path:
-            plt.savefig(f"{save_path}/gradcam_label{true_label}_pred{predictions:.3f}.png", 
-                        dpi=300, bbox_inches='tight')
+            filename = f"gradcam_binary{binary_label}"
+            if original_label is not None:
+                filename += f"_orig{original_label}"
+            filename += f"_pred{predictions:.3f}.png"
+            plt.savefig(os.path.join(save_path, filename), 
+                    dpi=300, bbox_inches='tight')
             plt.close()
         else:
             plt.show()
 
-def gradcam_analysis(self, layer_name='conv1d_1', example_indices=None, save_path=None,dataset='validation'):
+    def gradcam_analysis(self, layer_name='conv1d_1', example_indices=None, save_path=None, 
+                        dataset='validation', use_original_labels=False):
         """
         Perform Grad-CAM analysis on specified examples from validation data
         
@@ -1202,24 +1216,30 @@ def gradcam_analysis(self, layer_name='conv1d_1', example_indices=None, save_pat
         save_path : str or None
             Path to save visualizations. If None, displays them
         dataset: str 
-            The dataset to analyse. Default is 'validation'. Other option is 'training'.
+            The dataset to analyse. Default is 'validation'. Other option is 'training'
+        use_original_labels: bool
+            If True, shows original class labels in visualization
         """
         if example_indices is None:
             example_indices = range(5)
 
+        # Choose appropriate dataset
         if dataset == 'training':
             data = self.train_data
             labels = self.train_labels
+            original_labels = self.train_labels_ori if use_original_labels else None
         else: 
             data = self.val_data
             labels = self.val_labels
+            original_labels = self.val_labels_ori if use_original_labels else None
             
         if save_path:
             os.makedirs(save_path, exist_ok=True)
 
         for idx in example_indices:
             example_data = data[idx]
-            true_label = labels[idx]
+            binary_label = labels[idx]
+            orig_label = original_labels[idx] if use_original_labels else None
             input_data = example_data.reshape(1, *example_data.shape)
             
             # Get model prediction
@@ -1227,4 +1247,7 @@ def gradcam_analysis(self, layer_name='conv1d_1', example_indices=None, save_pat
             
             # Generate and plot Grad-CAM
             heatmap = self.get_gradcam(input_data, layer_name)
-            self.plot_gradcam(example_data, heatmap, pred, true_label, save_path)
+            self.plot_gradcam(example_data, heatmap, pred, 
+                            binary_label=binary_label,
+                            original_label=orig_label,
+                            save_path=save_path)
