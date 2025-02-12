@@ -25,7 +25,7 @@ sys.path.insert(1, 'stella')
 
 import stella
 import optimise
-os.nice(7)
+os.nice(1)
 
 
 parser = argparse.ArgumentParser(
@@ -139,77 +139,106 @@ def plot_metrics(cnn, seed):
     """
     Plots the output metrics from the CNN model for a single seed.
     """
-    # Create a custom colormap
-    unique_classes = np.unique(cnn.val_pred_table["labels"])
-    n_classes = len(unique_classes)
-    colors = plt.cm.viridis(np.linspace(0, 1, n_classes))  # Using viridis colormap
-    custom_cmap = mcolors.ListedColormap(colors)
-
-    _, axes = plt.subplots(2, 2, figsize=(18, 12))
+    custom_cmap = mcolors.ListedColormap(["yellow", "darkblue", "red", "green"])
     formatted_seed = f"{seed:04}"
 
-    # Plot ground truth
+    fig, axes = plt.subplots(3, 2, figsize=(18, 18))
+
+    # Top row: Original validation scatter plots
     sc = axes[0, 0].scatter(
         cnn.val_pred_table["tpeak"],
         cnn.val_pred_table[f"pred_s{formatted_seed}"],
         c=cnn.val_pred_table["labels"],
         cmap=custom_cmap,
-        label=f"Seed {formatted_seed}",
+        label=f"Seed {formatted_seed}"
     )
     axes[0, 0].set_xlabel("Tpeak [BJD - 2457000]")
     axes[0, 0].set_ylabel("Probability of Exocomet")
-    plt.colorbar(
-        sc, ax=axes[0, 0], 
-        ticks=unique_classes,
-        boundaries=np.arange(n_classes + 1) - 0.5
-    )
+    axes[0, 0].set_title("Validation Set Predictions")
+    plt.colorbar(sc, ax=axes[0, 0], ticks=np.arange(4), boundaries=np.arange(4 + 1) - 0.5)
 
-    # Plot loss
-    axes[0, 1].plot(
+    # Middle row: Loss and accuracy with test metrics overlaid
+    # Loss plot
+    axes[1, 0].plot(
         cnn.history_table[f"loss_s{formatted_seed}"],
-        label=f"Training Seed {formatted_seed}",
-        lw=3,
+        label="Training",
+        lw=3
     )
-    axes[0, 1].plot(
+    axes[1, 0].plot(
         cnn.history_table[f"val_loss_s{formatted_seed}"],
-        label=f"Validation Seed {formatted_seed}",
-        lw=3,
+        label="Validation",
+        lw=3
     )
-    axes[0, 1].set_xlabel("Epochs")
-    axes[0, 1].set_ylabel("Loss")
-    axes[0, 1].legend()
-
-    # Plot accuracy
-    axes[1, 0].plot(
-        cnn.history_table[f"accuracy_s{formatted_seed}"],
-        label=f"Training Seed {formatted_seed}",
-        lw=3,
-    )
-    axes[1, 0].plot(
-        cnn.history_table[f"val_accuracy_s{formatted_seed}"],
-        label=f"Validation Seed {formatted_seed}",
-        lw=3,
-    )
+    if hasattr(cnn, 'test_pred_table') and cnn.test_pred_table is not None:
+        test_loss = tf.keras.losses.binary_crossentropy(
+            cnn.test_pred_table["gt"], 
+            cnn.test_pred_table[f"pred_s{formatted_seed}"]
+        )
+        axes[1, 0].axhline(y=np.mean(test_loss), 
+                          color='r', 
+                          linestyle='--',
+                          label="Test",
+                          lw=3)
     axes[1, 0].set_xlabel("Epochs")
-    axes[1, 0].set_ylabel("Accuracy")
+    axes[1, 0].set_ylabel("Loss")
     axes[1, 0].legend()
+    axes[1, 0].set_title("Loss Curves")
 
-    # Plot ground truth (gt)
-    sc2 = axes[1, 1].scatter(
+    # Accuracy plot
+    axes[1, 1].plot(
+        cnn.history_table[f"accuracy_s{formatted_seed}"],
+        label="Training",
+        lw=3
+    )
+    axes[1, 1].plot(
+        cnn.history_table[f"val_accuracy_s{formatted_seed}"],
+        label="Validation",
+        lw=3
+    )
+    if hasattr(cnn, 'test_pred_table') and cnn.test_pred_table is not None:
+        test_acc = np.mean(
+            (cnn.test_pred_table[f"pred_s{formatted_seed}"] > 0.5) == 
+            cnn.test_pred_table["gt"]
+        )
+        axes[1, 1].axhline(y=test_acc, 
+                          color='r', 
+                          linestyle='--',
+                          label="Test",
+                          lw=3)
+    axes[1, 1].set_xlabel("Epochs")
+    axes[1, 1].set_ylabel("Accuracy")
+    axes[1, 1].legend()
+    axes[1, 1].set_title("Accuracy Curves")
+
+    # Bottom row: Ground truth plots
+    # Validation ground truth
+    sc2 = axes[2, 0].scatter(
         cnn.val_pred_table["tpeak"],
         cnn.val_pred_table[f"pred_s{formatted_seed}"],
         c=cnn.val_pred_table["gt"],
         cmap=custom_cmap,
-        label=f"Seed {formatted_seed}",
+        label=f"Seed {formatted_seed}"
     )
-    axes[1, 1].set_xlabel("Tpeak [BJD - 2457000]")
-    axes[1, 1].set_ylabel("Probability of Exocomet")
-    plt.colorbar(
-        sc2,
-        ax=axes[1, 1],
-        ticks=np.arange(4),
-        boundaries=np.arange(4 + 1) - 0.5,
-    )
+    axes[2, 0].set_xlabel("Tpeak [BJD - 2457000]")
+    axes[2, 0].set_ylabel("Probability of Exocomet")
+    axes[2, 0].set_title("Validation Set Ground Truth")
+    plt.colorbar(sc2, ax=axes[2, 0], ticks=np.arange(4), boundaries=np.arange(4 + 1) - 0.5)
+
+    # Test ground truth (if available)
+    if hasattr(cnn, 'test_pred_table') and cnn.test_pred_table is not None:
+        sc3 = axes[2, 1].scatter(
+            cnn.test_pred_table["tpeak"],
+            cnn.test_pred_table[f"pred_s{formatted_seed}"],
+            c=cnn.test_pred_table["gt"],
+            cmap=custom_cmap,
+            label=f"Seed {formatted_seed}"
+        )
+        axes[2, 1].set_xlabel("Tpeak [BJD - 2457000]")
+        axes[2, 1].set_ylabel("Probability of Exocomet")
+        axes[2, 1].set_title("Test Set Ground Truth")
+        plt.colorbar(sc3, ax=axes[2, 1], ticks=np.arange(4), boundaries=np.arange(4 + 1) - 0.5)
+    else:
+        axes[2, 1].axis('off')  # Hide the axis if no test data
 
     plt.tight_layout()
     os.makedirs("plots/", exist_ok=True)
@@ -291,12 +320,12 @@ if __name__ == "__main__":
             catalog=args.catalog,
             merge_datasets=True,
             other_datasets=datasets,
-            other_datasets_labels=args.merge_labels,  # change this so that this becomes a parser argumnet
+            other_datasets_labels=args.merge_labels, 
             cadences=args.c,
             training=args.training,
             validation=args.validation,
             frac_balance=args.frac_balance,  ### REMOVED ALL NEGATIVE CLASSES OF THE MERGING DATASETS
-            augment_portion=args.flip_portion,  # make this a parser argument (default value is OK)
+            augment_portion=args.flip_portion, 
         )
         
         if args.dsn:
@@ -405,7 +434,7 @@ if __name__ == "__main__":
         else:
             for seed in args.seed:
                 cnn.train_models(
-                    seeds=seed, epochs=args.e, batch_size=args.batch_size, shuffle=True
+                    seeds=seed, epochs=args.e, batch_size=args.batch_size, shuffle=True, pred_test=True,save=True
                 )
 
                 print("CNN complete. Plotting metrics.")

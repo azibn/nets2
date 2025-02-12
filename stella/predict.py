@@ -21,7 +21,7 @@ sys.path.insert(1, "../stella")
 
 from utils import *
 
-os.nice(12)
+os.nice(4)
 
 # config = tf.compat.v1.ConfigProto(
 #     intra_op_parallelism_threads=40,  # Parallelism within individual operations
@@ -38,6 +38,7 @@ parser.add_argument(help="Target directory of lightcurves", dest="path")
 parser.add_argument(
     "-m",
     "--model",
+    nargs='+',
     type=str,
     help="Path to CNN model directory. Assumes models are in its own directory.",
     dest="model",
@@ -104,10 +105,20 @@ PIPELINE = {
     # Add more pipeline configurations as needed
 }
 
+def init_cnn(ds_path):
+    """Initialise CNN once per worker process"""
+    global cnn
+    with open(ds_path, "rb") as file:
+        dataset = pickle.load(file)
+        ds = dataset['dataset']
+    cnn = stella.ConvNN(output_dir=f"/cnn-models/", ds=ds)
+
 
 def load_lightcurves_generator(path):
-    for file in glob.glob(f"{path}/**/*.fits", recursive=True):
-        yield file
+    for extension in ['.fits', '.npy']:
+        pattern = f"{path}/**/*{extension}"
+        for file in glob.glob(pattern, recursive=True):
+            yield file
 
 
 def find_models(path):
@@ -116,27 +127,59 @@ def find_models(path):
     If path is a directory, it globs for .h5 files.
     If path is a file, it returns a list with that single file.
     """
-    if os.path.isdir(path):
-        return glob.glob(f"{path}/*.h5")
-    elif os.path.isfile(path) and path.endswith(".h5"):
-        return [path]
-    else:
-        return
+    model_paths = []
+    for p in path:
+        if os.path.isdir(p):
+            model_paths.extend(glob.glob(f"{p}/*.h5"))
+        elif os.path.isfile(p) and p.endswith(".h5"):
+            model_paths.append(p)
+    return model_paths
 
 
 def process_lightcurve(path, pipeline):
-    try:
-        lc, info = import_lightcurve(path)
-    except OSError: 
-        return None
+    """
+    Import lightcurve and normalise the flux to be between 0 and 1.
+    
+    Params:
+    -------
+    path: str
+        Path to the lightcurve file.
+    pipeline: dict
+        Dataset/mission pipeline configuration. Currently supports eleanor-lite and SPOC for TESS, and EVEREST for K2.
 
-    time, flux, flux_error = (
-        lc[pipeline["time"]],
-        lc[pipeline["flux"]],
-        lc[pipeline["flux_err"]],
-    )
-    time, flux, flux_error = scale_lightcurve(time, flux, flux_error)
-    del lc
+    Returns:
+    --------
+    ID: int
+        ID of the target.
+    time: np.array
+        Time array.
+    flux: np.array
+        Scaled flux array.
+    flux_error: np.array    
+        Flux error array.
+        
+    """
+
+    if path.endswith('.fits'):
+        try:
+            lc, info = import_lightcurve(path)
+        except OSError:
+            return None
+        time, flux, flux_error = (
+            lc[pipeline["time"]],
+            lc[pipeline["flux"]], 
+            lc[pipeline["flux_err"]]
+        )
+        time, flux, flux_error = scale_lightcurve(time, flux, flux_error)
+    else:  
+        try:
+            data = np.load(path, allow_pickle=True)
+            time, flux, flux_error = data[0], data[1], data[2]
+            info = {'TIC_ID': int(path.split('/')[-1].split('_')[0])}
+            return info['TIC_ID'], time, flux, flux_error
+        except:
+            return None
+            
     return info[pipeline["id"]], time, flux, flux_error
 
 
@@ -155,6 +198,9 @@ def scale_lightcurve(time, flux, flux_error):
 
 # @profile
 def process_single_lightcurve(args):
+
+    global cnn
+
     lc_path, pipeline, models, threshold = args
     try:
         source_id, time, flux, flux_error = process_lightcurve(lc_path, pipeline)
@@ -162,9 +208,7 @@ def process_single_lightcurve(args):
         return None
     
     try:
-        cnn = stella.ConvNN(
-            output_dir=f"/cnn-models/", ds=ds
-        )
+
 
         preds = np.zeros((len(models), len(time)))
         for i, model in enumerate(models):
@@ -189,10 +233,10 @@ def process_single_lightcurve(args):
             "is_interesting": is_interesting,
         }
 
-        if is_interesting:
-            results["time"] = time
-            results["flux"] = flux
-            results["predictions"] = avg_pred
+        #if is_interesting:
+        results["time"] = time
+        results["flux"] = flux
+        results["predictions"] = avg_pred
 
         del time, flux, flux_error, preds, avg_pred
         gc.collect()
@@ -221,57 +265,60 @@ def load_predictions(file_path):
 def main():
     start_time = time.time()
 
-    lightcurves = load_lightcurves_generator(args.path)
     pipeline = PIPELINE[args.p]
-    print("Lightcurve data product: ", pipeline)
-
     models = find_models(args.model)
 
     total_results = 0
+    pool = None  # Initialize pool variable outside try block
+    
     try:
         with open(args.o, "ab") as f:
-            with multiprocessing.Pool(processes=args.threads) as pool:
+            pool = multiprocessing.Pool(
+                processes=args.threads,
+                initializer=init_cnn,
+                initargs=(args.ds,)
+            )
+            
+            total_files = sum(1 for _ in load_lightcurves_generator(args.path))
+            lc_args = ((lc, pipeline, models, args.threshold) 
+                      for lc in load_lightcurves_generator(args.path))
 
-                lc_args = ((lc, pipeline, models, args.threshold) for lc in lightcurves)
+            tqdmbar = tqdm(desc="Processing lightcurves", 
+                         unit=" lightcurves",
+                         total=total_files)
+            
+            for result in pool.imap_unordered(process_single_lightcurve, lc_args):
+                if result is None:
+                    continue
+                pickle.dump(result, f)
+                f.flush()
+                total_results += 1
+                tqdmbar.update(1)
+            
+            tqdmbar.close()
 
-                tqdmbar = tqdm(desc="Processing lightcurves", unit=" lightcurves")
-                for result in pool.imap_unordered(process_single_lightcurve, lc_args):
-                    if result is None:
-                        continue
-                    pickle.dump(result, f)
-                    f.flush()
-                    total_results += 1
-                    tqdmbar.update(1)
-                tqdmbar.close()
-
-                pool.close()
-                pool.join()
     except KeyboardInterrupt:
         print("Script interrupted by user. Exiting...")
-        pool.terminate()
-        pool.join()
+        if pool:
+            pool.terminate()
+    finally:
+        if pool:
+            pool.close()
+            pool.join()
 
     print(f"Total results processed: {total_results}")
-    pool.close()
-    pool.join()
     end_time = time.time()
     elapsed_time = (end_time - start_time) / 60
     print(f"Script executed in {elapsed_time:.2f} minutes")
 
-
 if __name__ == "__main__":
     with open(args.ds, "rb") as file:
-        ds = pickle.load(file)
+        dataset = pickle.load(file)
+        ds = dataset['dataset']
 
     pr = cProfile.Profile()
     pr.enable()
 
     main()
 
-    pr.disable()
-    s = io.StringIO()
-    sortby = 'cumulative'
-    ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
-    ps.print_stats()
-    print(s.getvalue())
     sys.exit(0)

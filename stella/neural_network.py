@@ -162,26 +162,83 @@ class ConvNN(object):
             filter1 = 16
             filter2 = 64
             dense = 32
-            dropout = 0.3
+            lstm_units1 = 64
+            lstm_units2 = 32
+            dropout = 0.1
             l2val = 0.001
             activation = 'relu'
 
-            # CONVOLUTIONAL LAYERS
-            model.add(
-                tf.keras.layers.Conv1D(
-                    filters=filter1,
-                    kernel_size=kernel1,
-                    activation=activation,
-                    padding="same",
-                    input_shape=(self.cadences, 1), kernel_regularizer=l2(l2val)))  
-            model.add(tf.keras.layers.MaxPooling1D(pool_size=pool))
-            model.add(tf.keras.layers.Dropout(dropout))
-            model.add(
-                tf.keras.layers.Conv1D(
-                    filters=filter2, kernel_size=kernel2, activation=activation, padding="same", kernel_regularizer=l2(l2val)))
+            # # CONVOLUTIONAL LAYERS
+            # model.add(
+            #     tf.keras.layers.Conv1D(
+            #         filters=filter1,
+            #         kernel_size=kernel1,
+            #         activation=activation,
+            #         padding="same",
+            #         input_shape=(self.cadences, 1), kernel_regularizer=l2(l2val)))  
+            # model.add(tf.keras.layers.MaxPooling1D(pool_size=pool))
+            # model.add(tf.keras.layers.Dropout(dropout))
+            # model.add(
+            #     tf.keras.layers.Conv1D(
+            #         filters=filter2, kernel_size=kernel2, activation=activation, padding="same", kernel_regularizer=l2(l2val)))
                 
-            model.add(tf.keras.layers.MaxPooling1D(pool_size=pool))
+            # model.add(tf.keras.layers.MaxPooling1D(pool_size=pool))
+            
+
+            # TEST NEW CNN LAYERS
+
+            model.add(tf.keras.layers.Conv1D(
+                filters=32,
+                kernel_size=9,
+                activation='relu',
+                padding="same",
+                input_shape=(self.cadences, 1),
+                kernel_regularizer=l2(l2val)))
+            model.add(tf.keras.layers.MaxPooling1D(pool_size=2))
             model.add(tf.keras.layers.Dropout(dropout))
+
+            # Second conv layer
+            model.add(tf.keras.layers.Conv1D(
+                filters=64,
+                kernel_size=7,
+                activation='relu',
+                padding="same",
+                kernel_regularizer=l2(l2val)))
+            model.add(tf.keras.layers.MaxPooling1D(pool_size=2))
+            model.add(tf.keras.layers.Dropout(dropout))
+
+            # Third conv layer (new)
+            model.add(tf.keras.layers.Conv1D(
+                filters=128,
+                kernel_size=5,
+                activation='relu',
+                padding="same",
+                kernel_regularizer=l2(l2val)))
+            model.add(tf.keras.layers.MaxPooling1D(pool_size=2))
+            model.add(tf.keras.layers.Dropout(dropout))
+
+
+
+
+            # LSTM LAYERS
+            # model.add(
+            #     tf.keras.layers.LSTM(
+            #         units=lstm_units1,
+            #         return_sequences=True,  # Return sequences for stacked LSTM
+            #         input_shape=(self.cadences, 1),
+            #         kernel_regularizer=l2(l2val)
+            #     )
+            # )
+            # model.add(tf.keras.layers.Dropout(dropout))
+            
+            # model.add(
+            #     tf.keras.layers.LSTM(
+            #         units=lstm_units2,
+            #         return_sequences=False,  # No need to return sequences for last LSTM
+            #         kernel_regularizer=l2(l2val)
+            #     ))
+
+            # model.add(tf.keras.layers.Dropout(dropout))
 
             # DENSE LAYERS AND SOFTMAX OUTPUT
             model.add(tf.keras.layers.Flatten())
@@ -320,11 +377,13 @@ class ConvNN(object):
                 self.ds.test_ids,
                 self.ds.test_labels,
                 self.ds.test_tpeaks,
+                self.ds.test_labels_ori,
             ],  ### NEED TO ADD ATTRIBUTE FOR TEST ORIGINAL LABELS
-            names=["tic", "gt", "tpeak"],
+            names=["tic", "gt", "tpeak","labels"],
         )
         # Learning rate schedule
         reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=20, min_lr=0.0001)
+
 
         for seed in seeds:
             
@@ -336,6 +395,9 @@ class ConvNN(object):
             if savemodelname is not None:
                 model_fmt = savemodelname + '_' + model_fmt
     
+            # FOR TEST METRICS  
+            test_callback = TestEvalCallback(self.ds.test_data, self.ds.test_labels)
+
 
             keras.backend.clear_session()
 
@@ -354,7 +416,7 @@ class ConvNN(object):
                 batch_size=batch_size,
                 shuffle=shuffle,
                 validation_data=(self.ds.val_data, val_labels),
-                callbacks = [tensorboard_callback] #, self.early_stopping] # ,reduce_lr, ]
+                callbacks = [tensorboard_callback,test_callback] #, self.early_stopping] # ,reduce_lr, ]
             )
 
             col_names = list(self.history.history.keys())
@@ -406,6 +468,21 @@ class ConvNN(object):
 
             # GETS PREDICTIONS FOR EACH TEST SET LIGHT CURVE IF PRED_TEST IS TRUE
             if pred_test is True:
+            
+            
+                for metric_name in test_callback.test_metrics:
+                    print("Metrics names:", self.model.metrics_names)
+                    base_metric_name = ''.join([c for c in metric_name if not c.isdigit()])
+                    
+                    col = Column(
+                        test_callback.test_metrics[metric_name],
+                        name=f"test_{base_metric_name}_s{seed:04d}"
+                    )
+                    if col.name in table.colnames:
+                        table.replace_column(col.name, col)
+                    else:
+                        table.add_column(col)
+
                 test_preds = self.model.predict(self.ds.test_data)
                 test_preds = np.reshape(test_preds, len(test_preds))
                 test_table.add_column(
@@ -423,11 +500,12 @@ class ConvNN(object):
             hist_fmt = "ensemble_histories" + fmt_table
             pred_fmt = "ensemble_predval" + fmt_table
 
-            table.write(os.path.join(self.output_dir, hist_fmt), format="ascii")
+            table.write(os.path.join(self.output_dir, hist_fmt), format="ascii",overwrite=True)
             val_table.write(
                 os.path.join(self.output_dir, pred_fmt),
                 format="ascii",
                 fast_writer=False,
+                overwrite=True
             )
 
             if pred_test is True:
@@ -436,6 +514,7 @@ class ConvNN(object):
                     os.path.join(self.output_dir, test_fmt),
                     format="ascii",
                     fast_writer=False,
+                    overwrite=True
                 )
 
     # def cross_validation(
@@ -683,10 +762,17 @@ class ConvNN(object):
                 self.ds.test_tpeaks
             ], names=["tic", "gt", "tpeak"])
 
-        kf = KFold(n_splits=n_splits, shuffle=shuffle)
+        unique_labels, counts = np.unique(labels_ori_trainval, return_counts=True)
+        print("\nOriginal label distribution:")
+        for label, count in zip(unique_labels, counts):
+            print(f"Label {label}: {count} samples")
 
+        kf = KFold(n_splits=n_splits, shuffle=shuffle)
+        fold_metrics = []
         i = 0
         for ti, vi in kf.split(y_trainval):
+
+                
             # Creates training and validation sets for this fold
             x_train = x_trainval[ti]
             y_train = y_trainval[ti]
@@ -747,8 +833,6 @@ class ConvNN(object):
                 seed=seed
             )
 
-            # Keep track of fold number
-            i += 1
 
         # Save tables if requested
         if save:
@@ -852,13 +936,13 @@ class ConvNN(object):
              An array of predictions from the model.
         """
 
-        os.environ['OPENBLAS_NUM_THREADS'] = '1'
-        os.environ['MKL_NUM_THREADS'] = '1'
-        os.environ['VECLIB_MAXIMUM_THREADS'] = '1'
-        os.environ['NUMEXPR_NUM_THREADS'] = '1'
-        os.environ['OMP_NUM_THREADS'] = '1'
-        tf.config.threading.set_inter_op_parallelism_threads(1)
-        tf.config.threading.set_intra_op_parallelism_threads(1)
+        # os.environ['OPENBLAS_NUM_THREADS'] = '1'
+        # os.environ['MKL_NUM_THREADS'] = '1'
+        # os.environ['VECLIB_MAXIMUM_THREADS'] = '1'
+        # os.environ['NUMEXPR_NUM_THREADS'] = '1'
+        # os.environ['OMP_NUM_THREADS'] = '1'
+        # tf.config.threading.set_inter_op_parallelism_threads(1)
+        # tf.config.threading.set_intra_op_parallelism_threads(1)
 
 
         def identify_gaps(t):
@@ -918,7 +1002,7 @@ class ConvNN(object):
         predictions = []
         pred_t, pred_f, pred_e = [], [], []
 
-        for j in tqdm(range(len(times))):
+        for j in range(len(times)):
             time = times[j] + 0.0
             lc = fluxes[j] / np.nanmedian(fluxes[j])  # MUST BE NORMALIZED
             err = errs[j] + 0.0
@@ -1146,28 +1230,9 @@ class ConvNN(object):
     def plot_gradcam(self, time_series, heatmap, predictions, binary_label, 
                     original_label=None, save_path=None):
         """
-        Plot the original time series with Grad-CAM heatmap overlay
-        
-        Parameters:
-        -----------
-        time_series : numpy.ndarray
-            Original input time series
-        heatmap : numpy.ndarray
-            Grad-CAM heatmap
-        predictions : float
-            Model prediction score
-        binary_label : int
-            Binary class label (0 or 1)
-        original_label : int, optional
-            Original class label if available
-        save_path : str or None
-            Path to save visualization
+        Plot the light curve with Grad-CAM attention overlay using a color gradient
         """
         plt.figure(figsize=(12, 4))
-        
-        # Plot original time series
-        plt.plot(range(len(time_series)), time_series, color='blue', 
-                alpha=0.6, label='Light curve')
         
         # Resize heatmap if necessary
         if len(heatmap) != len(time_series):
@@ -1175,12 +1240,21 @@ class ConvNN(object):
             x_original = np.linspace(0, len(time_series), len(time_series))
             heatmap = np.interp(x_original, x_new, heatmap)
         
-        # Plot heatmap overlay
-        plt.fill_between(range(len(time_series)), time_series.flatten(), 
-                        alpha=0.3, color='red', 
-                        weights=heatmap, label='Grad-CAM')
+        # Create a colormap from blue (low attention) to yellow (high attention)
+        cmap = plt.cm.get_cmap('viridis')
         
-        # Create title with both labels if original label is available
+        # Plot the light curve segments colored by attention
+        for i in range(len(time_series)-1):
+            plt.plot([i, i+1], time_series.flatten()[i:i+2], 
+                    color=cmap(heatmap[i]), 
+                    linewidth=2)
+        
+        # Add colorbar
+        sm = plt.cm.ScalarMappable(cmap=cmap, 
+                                norm=plt.Normalize(vmin=0, vmax=1))
+        plt.colorbar(sm, label='GradCAM Importance')
+        
+        # Set title and labels
         title = f"Grad-CAM Analysis\nBinary Label: {binary_label}, Prediction Score: {predictions:.3f}"
         if original_label is not None:
             title += f"\nOriginal Class: {original_label}"
@@ -1188,16 +1262,15 @@ class ConvNN(object):
         plt.title(title)
         plt.xlabel("Time (cadences)")
         plt.ylabel("Normalized Flux")
-        plt.legend()
         plt.grid(True, alpha=0.3)
         
         if save_path:
-            filename = f"gradcam_binary{binary_label}"
+            filename = f"gradcam_binary{binary_label}_seed{idx:03d}_pred{predictions:.3f}"
             if original_label is not None:
                 filename += f"_orig{original_label}"
-            filename += f"_pred{predictions:.3f}.png"
+            filename += ".png"
             plt.savefig(os.path.join(save_path, filename), 
-                    dpi=300, bbox_inches='tight')
+                        dpi=300, bbox_inches='tight')
             plt.close()
         else:
             plt.show()
@@ -1225,13 +1298,13 @@ class ConvNN(object):
 
         # Choose appropriate dataset
         if dataset == 'training':
-            data = self.train_data
-            labels = self.train_labels
-            original_labels = self.train_labels_ori if use_original_labels else None
+            data = self.ds.train_data
+            labels = self.ds.train_labels
+            original_labels = self.ds.train_labels_ori if use_original_labels else None
         else: 
-            data = self.val_data
-            labels = self.val_labels
-            original_labels = self.val_labels_ori if use_original_labels else None
+            data = self.ds.val_data
+            labels = self.ds.val_labels
+            original_labels = self.ds.val_labels_ori if use_original_labels else None
             
         if save_path:
             os.makedirs(save_path, exist_ok=True)
@@ -1251,3 +1324,34 @@ class ConvNN(object):
                             binary_label=binary_label,
                             original_label=orig_label,
                             save_path=save_path)
+
+class TestEvalCallback(tf.keras.callbacks.Callback):
+    def __init__(self, test_data, test_labels):
+        super().__init__()
+        self.test_data = test_data
+        self.test_labels = tf.cast(test_labels, tf.float32)
+        self.test_metrics = {
+            'loss': [],
+            'accuracy': [],
+            'auc': [],
+            'precision': [], 
+            'recall': [],   
+            'f1_score': []
+        }
+        
+    def on_epoch_end(self, epoch, logs=None):
+        # Evaluate model on test data
+        test_metrics = self.model.evaluate(
+            self.test_data, 
+            self.test_labels,
+            verbose=0
+        )
+        # Store metrics (in same order as model.metrics_names)
+        for metric_name, value in zip(self.model.metrics_names, test_metrics):
+            if metric_name not in self.test_metrics:
+                self.test_metrics[metric_name] = []
+            self.test_metrics[metric_name].append(value)
+            
+        # Add test metrics to logs so they show up in history
+        for metric_name, value in zip(self.model.metrics_names, test_metrics):
+            logs[f'test_{metric_name}'] = value

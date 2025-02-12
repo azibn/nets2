@@ -12,6 +12,7 @@ plots*
 notebooks/*.png
 cnn-models*
 notebooks/grant-test/
+notebooks/gradcam_results
 outputs/
 logs/
 modelplots/
