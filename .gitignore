@@ -20,6 +20,7 @@ testdata/
 catalogs*
 model*
 inj-rec*
+*.tar.gz
 
 ## stella stuff that i don't need
 docs/
