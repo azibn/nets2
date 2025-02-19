@@ -7,6 +7,7 @@ import re
 import inspect
 import random
 import pickle
+import matplotlib.pyplot as plt
 
 from .utils import break_rest, do_the_shuffle, split_data
 
@@ -126,20 +127,14 @@ class FlareDataSet(object):
 
         misc = split_data(
             self.labels,
-            self.training_matrix,
-            self.training_ids,
-            self.training_peaks,
+            self.full_matrix,
+            self.full_ids,
+            self.full_peaks,
             training,
             validation,
             self.original_labels,
         )
 
-        if merge_datasets == True:
-            self.verify_stratification(
-            misc[1],  # y_train
-            misc[3],  # y_val
-            misc[10], # y_train_ori
-            misc[11])  # y_val_ori
 
 
         if self.num_subset:
@@ -148,9 +143,9 @@ class FlareDataSet(object):
                 setattr(self, attr, value)
             misc = split_data(
                 self.labels,
-                self.training_matrix,
-                self.training_ids,
-                self.training_peaks,
+                self.full_matrix,
+                self.full_ids,
+                self.full_peaks,
                 training,
                 validation,
                 self.original_labels,
@@ -158,23 +153,23 @@ class FlareDataSet(object):
 
 
 
+        
         self.train_data = misc[0]
         self.train_labels = misc[1]
-
         self.val_data = misc[2]
         self.val_labels = misc[3]
-        self.val_ids = misc[4]
+        self.val_ids = misc[4]  # This was already assigned but keeping for clarity
         self.val_tpeaks = misc[5]
-
         self.test_data = misc[6]
         self.test_labels = misc[7]
-
-        self.test_ids = misc[8]
+        self.test_ids = misc[8]  # This was already assigned but keeping for clarity
         self.test_tpeaks = misc[9]
-
         self.train_labels_ori = misc[10]
         self.val_labels_ori = misc[11]
         self.test_labels_ori = misc[12]
+        self.train_ids = misc[13]  # New assignments
+        self.val_ids = misc[14]    # If you want to reassign
+        self.test_ids = misc[15]   # If you want to reassign
 
         if (augment_portion is not None): 
             self.flip_exocomets(portion=augment_portion)
@@ -223,18 +218,20 @@ class FlareDataSet(object):
              Specify a number of rows to call from the catalog.
         """
 
-        print("Reading in training set files.")
 
         files = os.listdir(self.fn_dir)
 
         files = np.sort([i for i in files if i.endswith(".npy") and any(x in i for x in ["sector", "_q", "_c"])])
 
+
         tics, time, flux, err, real, model, tpeaks = [], [], [], [], [], [], []
 
         for fn in files:
             data = np.load(os.path.join(self.fn_dir, fn), allow_pickle=True)
+            
             split_fn = fn.split("_")
             tic = int(split_fn[0])
+
             tics.append(tic)
             
             # Single regex to match all three formats: sector_07, q11, c00
@@ -260,7 +257,6 @@ class FlareDataSet(object):
 
             peaks = peaks - time_offset
             tpeaks.append(peaks)
-
         self.ids = np.array(tics)
         self.time = np.array(time, dtype=np.ndarray)  # in TBJD
         self.flux = np.array(flux, dtype=np.ndarray)
@@ -268,7 +264,8 @@ class FlareDataSet(object):
         self.real = np.array(real, dtype=np.ndarray)
         self.model = np.array(model, dtype=np.ndarray)
         self.tpeaks = tpeaks  # in TBJD
-        print(f"Number of files loaded: {len(self.ids)}")
+
+
 
     # def reformat_data(self, random_seed=321):
     #     """
@@ -395,9 +392,9 @@ class FlareDataSet(object):
 
     #     self.labels = label
     #     self.original_labels = np.copy(label)
-    #     self.training_peaks = peaks
-    #     self.training_ids = ids
-    #     self.training_matrix = matrix
+    #     self.full_peaks = peaks
+    #     self.full_ids = ids
+    #     self.full_matrix = matrix
 
 
     def reformat_data(self, random_seed=321):
@@ -428,21 +425,20 @@ class FlareDataSet(object):
 
         x = 0
 
-        print(f"Starting to process {len(self.time)} files")
 
-        #    def print_range_around_index(arr, idx, window_size=20):
-        #        start_index = max(0, idx - window_size)
-        #        end_index = min(len(arr), idx + window_size + 1)
 
         for i in tqdm(range(len(self.time))):
             flares = np.array([], dtype=int)
 
             for peak in self.tpeaks[i]:
+
                 arg = np.where(
-                    (self.time[i] > (peak - 0.04)) & (self.time[i] < (peak + 0.04))
+                    (self.time[i] > (peak - 0.06)) & (self.time[i] < (peak + 0.06))
                 )[
                     0
-                ]  # expanded the peak to one hour (in days) rather than
+                ]  
+
+                # expanded the peak to one hour (in days) rather than
                 ## 30 minutes (in days)
 
                 # DOESN'T LIKE FLARES AT THE VERY END OF THE LIGHT CURVE
@@ -452,25 +448,13 @@ class FlareDataSet(object):
                     start = int(closest - self.cadences / 2)
                     end = int(closest + self.cadences / 2)
 
-                    ### THESE NEXT TWO STATEMENTS ARE ACTUALLY REDUNDANT BECAUSE OF THE LATER IF STATEMENT.
-                    # if start < 0:
-                    #     start = 0
-                    #     end = self.cadences
-                    # if end > len(self.time[i]):
-                    #     start = start - (end - len(self.time[i]))
-                    #     end = len(self.time[i])
-                    # end = len(self.time[i])
-                    # start = max(0, end - self.cadences)
+
 
                     flare_region = np.arange(start, end, 1, dtype=int)
-                    # print("flare region: ", flare_region)
+       
 
                     if (start > 0) and (end < len(self.time[i])):
                         flares = np.append(flares, flare_region)
-                        ### makes sure there are no NaNs being mistaken for a positive class.
-                        # if np.isnan(self.flux[i][flare_region]).any():
-                        #     continue
-                        # else:
                         ### ADD LABELS AND MATRIX PROPERLY
                         fails = []
                         try:
@@ -480,6 +464,7 @@ class FlareDataSet(object):
                             training_matrix[x] = self.flux[i][flare_region]
                             training_labels[x] = 1
                             x += 1
+
                         except IndexError:
                             fails.append(self.ids)
                             continue
@@ -492,6 +477,7 @@ class FlareDataSet(object):
             nontime, nonflux, nonerr = break_rest(
                 time_removed, flux_removed, flux_err_removed, self.cadences
             )
+
             for j in range(len(nonflux)):
                 if x >= ss:
                     break
@@ -501,6 +487,7 @@ class FlareDataSet(object):
                     training_peaks[x] = nontime[j][int(self.cadences / 2)]
                     training_matrix[x] = nonflux[j]
                     training_labels[x] = 0
+
                     x += 1
 
 
@@ -517,11 +504,14 @@ class FlareDataSet(object):
             training_matrix, labels, training_peaks, training_ids, self.frac_balance
         )
 
+
         self.labels = label
         self.original_labels = np.copy(label)
-        self.training_peaks = peaks
-        self.training_ids = ids
-        self.training_matrix = matrix
+        self.full_peaks = peaks
+        self.full_ids = ids
+        self.full_matrix = matrix
+
+
 
     def merge(self, other, labels=0):
         """Merge one FlareDataSet instance into this one.
@@ -546,16 +536,16 @@ class FlareDataSet(object):
                     o.labels[:] = 0
 
 
-            self.training_matrix = np.concatenate(
-                [self.training_matrix, o.training_matrix]
+            self.full_matrix = np.concatenate(
+                [self.full_matrix, o.training_matrix]
             )
             self.labels = np.concatenate([self.labels, o.labels])
             self.original_labels = np.concatenate(
                 [self.original_labels, o.original_labels]
             )
-            self.training_ids = np.concatenate([self.training_ids, o.training_ids])
-            self.training_peaks = np.concatenate(
-                [self.training_peaks, o.training_peaks]
+            self.full_ids = np.concatenate([self.full_ids, o.training_ids])
+            self.full_peaks = np.concatenate(
+                [self.full_peaks, o.training_peaks]
             )
 
             self.ids = np.concatenate([self.ids, o.ids])
@@ -569,7 +559,9 @@ class FlareDataSet(object):
 
 
     def subsets(self, num_subset):
-        """Returns subset of positive class"""
+        """Returns subset of positive class.
+        FUNCTION STILL UNDER CONSTRUCTION.
+        """
 
         indices = np.where(self.labels == 1)[0]
         print(len(indices))
@@ -586,8 +578,8 @@ class FlareDataSet(object):
                 "training_matrix",
                 "labels",
                 "original_labels",
-                "training_ids",
-                "training_peaks",
+                "train_ids",
+                "tpeaks",
             ]
             for attr in attributes:
                 attr_len = len(getattr(self, attr))
@@ -604,11 +596,15 @@ class FlareDataSet(object):
         Parameters:
         ------------
         portion: float, optional
+<<<<<<< Updated upstream
             Total portion of the positive class to flip. Default is None.
         horizontal_ratio: float, optional
             Ratio of flips that should be horizontal. Default is 0.5 (50% of flips).
         vertical_ratio: float, optional
             Ratio of flips that should be vertical. Default is 0.5 (50% of flips).
+=======
+            The portion of the positive class data to flip. Default is None.
+>>>>>>> Stashed changes
         """
         if portion is None:
             return
@@ -635,9 +631,16 @@ class FlareDataSet(object):
             
             flipped_data = [self.train_data[i][::-1] for i in flip_ind]
             flipped_data_val = [self.val_data[i][::-1] for i in flip_ind_val]
+<<<<<<< Updated upstream
+=======
+            
+            flipped_labels = np.zeros(len(flipped_data))
+            flipped_labels_val = np.zeros(len(flipped_data_val))
+>>>>>>> Stashed changes
             
             self._add_flipped_data(flip_ind, flip_ind_val, flipped_data, flipped_data_val)
 
+<<<<<<< Updated upstream
         # Handle vertical flips
         if vertical_flips_train > 0:
             flip_ind = np.random.choice(ind_pc, size=vertical_flips_train, replace=False)
@@ -647,6 +650,28 @@ class FlareDataSet(object):
             flipped_data_val = [-self.val_data[i] for i in flip_ind_val]
             
             self._add_flipped_data(flip_ind, flip_ind_val, flipped_data, flipped_data_val)
+=======
+            # Concatenate data, labels, and original labels
+            self.train_data = np.concatenate((self.train_data, flipped_data), axis=0)
+            self.train_labels = np.concatenate((self.train_labels, flipped_labels), axis=0)
+            self.train_labels_ori = np.concatenate(
+                (self.train_labels_ori, flipped_labels_ori), axis=0
+            )
+
+            self.val_data = np.concatenate((self.val_data, flipped_data_val), axis=0)
+            self.val_labels = np.concatenate((self.val_labels, flipped_labels_val), axis=0)
+            self.val_labels_ori = np.concatenate(
+                (self.val_labels_ori, flipped_labels_ori_val), axis=0
+            )
+
+            # Use the correct IDs from training and validation sets
+            flipped_train_ids = self.train_ids[flip_ind]
+            self.train_ids = np.concatenate((self.train_ids, flipped_train_ids), axis=0)
+
+            flipped_val_ids = self.val_ids[flip_ind_val]
+            self.val_ids = np.concatenate((self.val_ids, flipped_val_ids), axis=0)
+            self.val_tpeaks = np.concatenate((self.val_tpeaks, self.val_tpeaks[flip_ind_val]), axis=0)
+>>>>>>> Stashed changes
 
 
     def _add_flipped_data(self, flip_ind, flip_ind_val, flipped_data, flipped_data_val):

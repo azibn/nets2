@@ -6,7 +6,6 @@ Exocomet models were created using custom functions in `models.py`, while exopla
 
 import os
 import sys
-import time as ti
 import argparse
 import random
 import time as ti
@@ -19,7 +18,7 @@ import wotan
 import batman
 import astropy.constants as const
 from astroquery.mast import Catalogs
-import signal
+import gc
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks, savgol_filter
 #np.random.seed(42)
@@ -234,9 +233,9 @@ def is_valid_t0(t0, time, large_gaps_indices, diff):
             and abs(t0 - time[index + 1]) < 1.5
         ):
             return False
-        if index > 0 and diff[index - 1] > 0.5 and abs(t0 - time[index]) < 1.5:
+        if index > 0 and diff[index - 1] > 0.5 and abs(t0 - time[index]) < 1.75:
             return False
-    if t0 <= time[0] + 1.5 or t0 >= time[-1] - 1.5:
+    if t0 <= time[0] + 1.5 or t0 >= time[-1] - 1.75:
         return False
     return True
 
@@ -280,13 +279,14 @@ def normalise_depth(flux):
     depth_normalised_lightcurve = ((flux - median) / abs_depth + 1)
     return depth_normalised_lightcurve
 
+
 def comet(
     file,
     folder,
     min_snr=7,
     max_snr=12,
     window_size=84,
-    max_retries=100,
+    max_retries=10,
     method=None,
     save_model=True,
     mission='TESS'
@@ -324,9 +324,10 @@ def comet(
 
         if method == "comet_curve" or method is None:
 
-            sigma = np.round(np.random.uniform(0.25, 0.6), 3) # 0.25-0.7
-            tail = np.round(np.random.uniform(0.45, 0.85), 3) # 0.35-0.5
-            shape = np.round(np.random.uniform(1, 4), 3) # 1.5-4
+            tail = np.round(np.random.uniform(0.35, 0.8), 3) # 0.35-0.5
+            sigma = np.round(np.random.uniform(0.15, 0.3), 3) # 0.25-0.7
+            #tail = np.round(np.random.uniform(0.45, 0.85), 3) # 0.35-0.5
+            shape = np.round(np.random.uniform(1, 3.5), 3) # 1.5-4
             model = 1 - models.comet_curve2(lc["time"], snr["amplitude"], t0, sigma=sigma, tail=tail, shape=shape)
         
         elif method == "skewed_gaussian":
@@ -339,6 +340,7 @@ def comet(
 
         if np.all(f_scaled >= 0):
             valid_model_found = True
+
         else:
             retry_count += 1
 
@@ -386,7 +388,7 @@ def comet(
             ),
         )
     ## HAVE ONLY LEFT TIC AS A DICT ENTRY BECAUSE OF OTHER CODE DEPENDENCIES. CAN BE CHANGED LATER.
-    return [{"tic": target_id, "time": t0, "snr": snr['snr'], "rms": lc['rms']}] 
+    return [{"tic": target_id, "time": t0, "snr": snr['snr'], "rms": lc['rms'], "tail": tail, "sigma": sigma, "shape": shape}] 
 
 def exoplanet(file, folder, m_star, r_star, period_min=3, period_max=700, binary=False,mission='TESS'):
     min_snr = 3
@@ -500,7 +502,7 @@ def is_valid_sine_time(t, time, window_size=4):
     return True
 
 
-def sines(file, folder, min_period=1.25, max_period=3, 
+def sines(file, folder, min_period=2.5, max_period=3, 
                        min_amplitude=0.005, max_amplitude=0.01, 
                        prominence_factor=0.01, min_distance_days=1):
     
@@ -591,7 +593,7 @@ def load_ds():
 
 
 def save_training_set_plots(ds, folder_name):
-    """plots the training set data as the stella input lightcurves (i.e: the chopped up lightcurves)"""
+    """plots the training set data as the stella input lightcurves"""
 
     os.makedirs(folder_name, exist_ok=True)
 
@@ -600,11 +602,11 @@ def save_training_set_plots(ds, folder_name):
 
     ### PLOTTING POSITIVE CLASS
     data = ds.train_data[ind_pc]
-
+    tic_ids = ds.train_ids[ind_pc]  # These are the TIC IDs
 
     num_sets = data.shape[0] // 100
 
-    for set_index in tqdm(range(num_sets),desc='Saving plots'):
+    for set_index in tqdm(range(num_sets), desc='Saving plots'):
         start_index = set_index * 100
         end_index = min((set_index + 1) * 100, data.shape[0])
 
@@ -613,24 +615,30 @@ def save_training_set_plots(ds, folder_name):
 
         for i in range(start_index, end_index):
             plot_index = i % 100
-            axs[plot_index].plot(data[i, :, 0])
-            axs[plot_index].set_title(f"Plot {i}")
+            x = np.arange(len(data[i, :, 0]))
+            axs[plot_index].scatter(x, data[i, :, 0], s=1)
+            # Changed this line to show TIC ID instead of just "Plot X"
+            axs[plot_index].set_title(f"TIC {int(tic_ids[i])}")
 
         for j in range(end_index - start_index, len(axs)):
             axs[j].axis('off')
 
         plt.tight_layout()
         plt.savefig(f'{folder_name}/{start_index}-{end_index}.png', dpi=200, bbox_inches='tight')
-        plt.close()
+        plt.clf()  # Clear the current figure
+        plt.close('all')  # Close all figures
+        gc.collect()  # Force garbage collection
+
 
 def main(args):
-    # files = # Your list of files or target IDs
-
-    files = glob(f"{args.dir}/**/*.fits",recursive=True)
-    random.shuffle(files)
-
+    # Get all available files
+    allfiles = glob(f"{args.dir}/**/*.fits", recursive=True)
+    
+    # Check if we have enough files
+    if len(allfiles) < args.number:
+        raise ValueError(f"Need {args.number} unique files but only found {len(allfiles)} files")
+    
     os.makedirs(args.folder, exist_ok=True)
-
 
     if args.transit != "exocomet":
         TIC_table = Catalogs.query_object(f'TIC 270577175', catalog="TIC")
@@ -639,30 +647,26 @@ def main(args):
         del TIC_table
 
     failed_ids = []
-    # Map model names to functions
-
     tic = []
     times = []
     snr_cat = []
     rms_cat = []
 
     successful_models = 0
-    file_index = 0
-        
+    processed_files = set()
+    processed_ids = set()
 
     with tqdm(total=args.number, desc="Creating models") as pbar:
-
         while successful_models < args.number:
-            if file_index >= len(files):
-                random.shuffle(files)
-                file_index = 0
-            
-            if len(files) == 0:
-                print("Error: The files list is empty.")
-                break
-            
-            target_ID = files[file_index]
-            
+            remaining_files = [f for f in allfiles if f not in processed_files]
+            if not remaining_files:
+                break  # No more files to process
+
+            target_ID = random.choice(remaining_files)
+
+            if target_ID in processed_files:
+                continue  # Skip if the file has already been processed
+
             if args.transit in model_functions:
                 try:
                     if args.transit == "exocomet" or args.transit == 'sines':
@@ -673,6 +677,10 @@ def main(args):
                     if results is not None:
                         new_tic, new_times, new_snr, new_rms = process_results(results)
                         if new_tic:  # Only extend lists if there are new results
+                            for id in new_tic:
+                                if id in processed_ids:
+                                    continue  # Skip if the ID has already been processed
+                                processed_ids.add(id)
                             tic.extend(new_tic)
                             times.extend(new_times)
                             snr_cat.extend(new_snr)
@@ -680,11 +688,10 @@ def main(args):
                             increment = len(new_tic)
                             successful_models += increment
                             pbar.update(increment)
+                            processed_files.add(target_ID)  # Mark the file as processed
                 except Exception as e:
                     print(f"Failed for TIC {target_ID}: ", e)
                     failed_ids.append(target_ID)
-            
-            file_index += 1
 
     if len(failed_ids) > 0:
         print(f"Failed IDs: {failed_ids}")
@@ -700,15 +707,10 @@ def main(args):
     data.columns = ["TIC", "tpeak", "SNR", "RMS"]
     data.TIC = data.TIC.astype(int)
     t = Table.from_pandas(data)
-    #for col in t.colnames:
-    #    if isinstance(t[col][0], dict):
-    #        t[col] = [json.dumps(item) for item in t[col]]
     t.write(f"{args.catalog}", format="ascii", overwrite=True)
 
     if len(failed_ids) > 0:
         print(f"{len(failed_ids)} failed combinations along the way. Size of successful models: {len(t)}")
-
-
     
 
 if __name__ == "__main__":

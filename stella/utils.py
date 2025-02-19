@@ -2,6 +2,7 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from astropy.io import fits
 from astropy.table import Table
+import matplotlib.pyplot as plt
 
 
 def flare_lightcurve(time, t0, amp, rise, fall, y=None):
@@ -218,6 +219,9 @@ def do_the_shuffle(training_matrix, labels, training_other, training_ids, frac_b
     -------
     """
     np.random.seed(321)
+    
+
+    #visualize_data_order(training_ids, training_matrix, labels, "before_shuffle")
     ind_shuffle = np.random.permutation(training_matrix.shape[0])
 
     labels2 = np.copy(labels[ind_shuffle])
@@ -225,7 +229,6 @@ def do_the_shuffle(training_matrix, labels, training_other, training_ids, frac_b
     other2 = np.copy(training_other[ind_shuffle])
     ids2 = np.copy(training_ids[ind_shuffle])
 
-    # INDEX OF NEGATIVE CLASS (DEFAULT NEGATIVE CLASS IS 0. BUT THIS ALSO TAKES INTO ACCOUNT IF OTHER LABELS WERE ASSIGNED)
     ind_nc = np.where(labels2 != 1)
 
     # RANDOMIZE INDEXES
@@ -240,119 +243,67 @@ def do_the_shuffle(training_matrix, labels, training_other, training_ids, frac_b
     )  # because ind_nc_rand is called, only negative classes deleted.
     newtraining_other = np.delete(other2, ind_nc_rand[0:length])
     newtraining_ids = np.delete(ids2, ind_nc_rand[0:length])
-    newtraining_matrix = np.delete(matrix2, ind_nc_rand[0:length], axis=0)
 
-    ind_pc = np.where(newlabels == 1)
-    ind_nc = np.where(newlabels != 1)
-    # print("{} positive classes".format(len(ind_pc[0])))
-    # print("{} negative classes".format(len(ind_nc[0])))
-    # try:
-    #     print(
-    #         "{}% class imbalance\n".format(
-    #             np.round(100 * len(ind_pc[0]) / len(ind_nc[0]))
-    #         )
-    #     )
-    # except ZeroDivisionError:
-    #     print("Division by zero error. Cannot calculate class imbalance.")
-    #     pass
+
+
+    newtraining_matrix = np.delete(matrix2, ind_nc_rand[0:length], axis=0)
 
     return newtraining_ids, newtraining_matrix, newlabels, newtraining_other
 
 
-# def split_data(labels, training_matrix, ids, other, training, validation,original_labels=None):
 
-#     """
-#     Splits the data matrix into a training, validation, and testing set.
+def split_data(labels, training_matrix, ids, other, training, validation, original_labels):
+    data_tuples = list(zip(labels, training_matrix, ids, other, original_labels))
+    np.random.shuffle(data_tuples)
 
-#     Parameters
-#     ----------
-#     labels : np.array
-#          Array of labels for each data row.
-#     training_matrix : np.ndarray
-#          Array of training-validation-test data.
-#     ids : np.array
-#          Array of identifiers for the light curves.
-#     other : np.array
-#          Array of signals (for flares -- tpeak; for transits -- SNR).
-#     training : float
-#          How much of the data should be in the training set.
-#     validation : float
-#         How much of the data should be in the validation & test set.
-#     original_labels: np.array, optional
-#         Array of the original labels for each data row. Mainly used for merged datasets,
-#         otherwise this is the same as labels.
+    labels, training_matrix, ids, other, original_labels = zip(*data_tuples)
 
-#     Returns
-#     -------
-#     x_train : np.ndarray
-#     y_train : np.narray
-#     x_val : np.ndarray
-#     y_val : np.narray
-#     val_ids : np.array
-#     val_other : np.array
-#     x_test : np.ndarray
-#     y_test : np.array
-#     test_ids : np.array
-#     test_other : np.array
-#     y_val_ori: np.narray
-#     """
+    labels = np.array(labels)
+    training_matrix = np.array(training_matrix)
+    ids = np.array(ids)
+    other = np.array(other)
+    original_labels = np.array(original_labels)
 
-#     data_tuples = list(zip(labels, training_matrix, ids, other, original_labels))
-#     np.random.shuffle(data_tuples)
+    train_cutoff = int(training * len(labels))
+    val_cutoff = int(validation * len(labels))
 
+    x_train = training_matrix[0:train_cutoff]
+    y_train = labels[0:train_cutoff]
+    y_train_ori = original_labels[0:train_cutoff]
 
-#     labels, training_matrix, ids, other, original_labels = zip(*data_tuples)
+    x_val = training_matrix[train_cutoff:val_cutoff]
+    y_val = labels[train_cutoff:val_cutoff]
+    y_val_ori = original_labels[train_cutoff:val_cutoff]
 
-#     labels = np.array(labels)
-#     training_matrix = np.array(training_matrix)
-#     ids = np.array(ids)
-#     other = np.array(other)
-#     original_labels = np.array(original_labels)
-#      # Shuffle the data
-# #     indices = np.arange(len(labels))
-# #     np.random.shuffle(indices)
+    x_test = training_matrix[val_cutoff:]
+    y_test = labels[val_cutoff:]
+    y_test_ori = original_labels[val_cutoff:]
 
-# #     labels = labels[indices]
-# #     training_matrix = training_matrix[indices]
-# #     ids = ids[indices]
-# #     other = other[indices]
+    x_train = x_train.reshape(x_train.shape[0], x_train.shape[1], 1)
+    x_val = x_val.reshape(x_val.shape[0], x_train.shape[1], 1)
+    x_test = x_test.reshape(x_test.shape[0], x_test.shape[1], 1)
 
-#     train_cutoff = int(training * len(labels))
+    test_ids = ids[val_cutoff:]
+    test_other = other[val_cutoff:]
 
-#     val_cutoff = int(validation * len(labels))
+    val_ids = ids[train_cutoff:val_cutoff]
+    val_other = other[train_cutoff:val_cutoff]
 
-#     x_train = training_matrix[0:train_cutoff]
-#     y_train = labels[0:train_cutoff]
-#     print("unique labels:",np.unique(y_train))
-
-#     x_val = training_matrix[train_cutoff:val_cutoff]
-#     y_val = labels[train_cutoff:val_cutoff]
-#     y_val_ori = original_labels[train_cutoff:val_cutoff]
-#     x_test = training_matrix[val_cutoff:]
-#     y_test = labels[val_cutoff:]
-#     x_train = x_train.reshape(x_train.shape[0], x_train.shape[1], 1)
-#     x_val = x_val.reshape(x_val.shape[0], x_train.shape[1], 1)
-#     x_test = x_test.reshape(x_test.shape[0], x_test.shape[1], 1)
-
-#     test_ids = ids[val_cutoff:]
-#     test_other = other[val_cutoff:]
-
-#     val_ids = ids[train_cutoff:val_cutoff]
-#     val_other = other[train_cutoff:val_cutoff]
-
-#     return (
-#         x_train,
-#         y_train,
-#         x_val,
-#         y_val,
-#         val_ids,
-#         val_other,
-#         x_test,
-#         y_test,
-#         test_ids,
-#         test_other,
-#         y_val_ori
-#     )
+    return (
+        x_train,
+        y_train,
+        x_val,
+        y_val,
+        val_ids,
+        val_other,
+        x_test,
+        y_test,
+        test_ids,
+        test_other,
+        y_train_ori,
+        y_val_ori,
+        y_test_ori,
+    )
 
 
 # def split_data(
@@ -488,7 +439,8 @@ def split_data(
         x_train = training_matrix.reshape(training_matrix.shape[0], training_matrix.shape[1], 1)
         return (
             x_train, labels, None, None, None, None, None, None, None, None,
-            original_labels, None, None
+            original_labels, None, None, 
+            ids, None, None  # Added train_ids, val_ids, test_ids
         )
 
     # First split: training and temp (validation + test)
@@ -515,7 +467,6 @@ def split_data(
         y_train_ori,
         ori_temp,
     ) = split_arrays
-
 
     if np.isclose(training_ratio + validation_ratio, 1):
         # No test set needed, x_temp becomes x_val
@@ -560,14 +511,11 @@ def split_data(
             y_test_ori,
         ) = split_arrays
 
-
-
     # Reshape data matrices
     x_train = x_train.reshape(x_train.shape[0], x_train.shape[1], 1)
     x_val = x_val.reshape(x_val.shape[0], x_val.shape[1], 1)
     if x_test is not None:
         x_test = x_test.reshape(x_test.shape[0], x_test.shape[1], 1)
-
 
     return (
         x_train,
@@ -583,6 +531,9 @@ def split_data(
         y_train_ori,
         y_val_ori,
         y_test_ori,
+        ids_train,  # Train IDs
+        val_ids,    # Validation IDs
+        test_ids    # Test IDs
     )
 
 
