@@ -86,14 +86,14 @@ class ConvNN(object):
         self.metrics = metrics
 
         if ds is not None:
-            self.training_matrix = np.copy(ds.training_matrix)
+            self.full_matrix = np.copy(ds.full_matrix)
             self.labels = np.copy(ds.labels)
             self.cadences = np.copy(ds.cadences)
 
             self.frac_balance = ds.frac_balance + 0.0
 
-            self.tpeaks = ds.training_peaks
-            self.training_ids = ds.training_ids
+            self.tpeaks = ds.full_peaks
+            self.full_ids = ds.full_ids
 
         else:
             print("WARNING: No stella.DataSet object passed in.")
@@ -745,8 +745,8 @@ class ConvNN(object):
         # Combine training and validation data
         x_trainval = np.concatenate([self.ds.train_data, self.ds.val_data])
         y_trainval = np.concatenate([self.ds.train_labels, self.ds.val_labels])
-        ids_trainval = np.concatenate([self.ds.training_ids, self.ds.val_ids])
-        peaks_trainval = np.concatenate([self.ds.training_peaks, self.ds.val_tpeaks])
+        ids_trainval = np.concatenate([self.ds.train_ids, self.ds.val_ids])
+        #peaks_trainval = np.concatenate([self.ds.training_peaks, self.ds.val_tpeaks])
         labels_ori_trainval = np.concatenate([self.ds.train_labels_ori, self.ds.val_labels_ori])
         
         tab = Table()
