@@ -487,34 +487,33 @@ class ConvNN(object):
                     Column(test_preds, name="pred_s{0:04d}".format(int(seed)))
                 )
 
-        # SETS TABLE ATTRIBUTES
-        self.history_table = table
-        self.val_pred_table = val_table
-        self.test_pred_table = test_table
+            # SAVES TABLE IS SAVE IS TRUE
+            if save is True:
+                fmt_table = "_i{0:04d}_b{1}.txt".format(int(epochs), self.frac_balance)
+                hist_fmt = f"ensemble_{int(seed)}_histories" + fmt_table
+                pred_fmt = f"ensemble_{int(seed)}_predval" + fmt_table
 
-        # SAVES TABLE IS SAVE IS TRUE
-        if save is True:
-            fmt_table = "_i{0:04d}_b{1}.txt".format(int(epochs), self.frac_balance)
-            hist_fmt = f"ensemble_{int(seed)}_histories" + fmt_table
-            pred_fmt = f"ensemble_{int(seed)}_predval" + fmt_table
-
-            table.write(os.path.join(self.output_dir, hist_fmt), format="ascii",overwrite=True)
-            val_table.write(
-                os.path.join(self.output_dir, pred_fmt),
-                format="ascii",
-                fast_writer=False,
-                overwrite=True
-            )
-
-            if pred_test is True:
-                test_fmt = "ensemble_predtest" + fmt_table
-                test_table.write(
-                    os.path.join(self.output_dir, test_fmt),
+                table.write(os.path.join(self.output_dir, hist_fmt), format="ascii",overwrite=True)
+                val_table.write(
+                    os.path.join(self.output_dir, pred_fmt),
                     format="ascii",
                     fast_writer=False,
                     overwrite=True
                 )
 
+                if pred_test is True:
+                    test_fmt = "ensemble_predtest" + fmt_table
+                    test_table.write(
+                        os.path.join(self.output_dir, test_fmt),
+                        format="ascii",
+                        fast_writer=False,
+                        overwrite=True
+                    )
+
+        # SETS TABLE ATTRIBUTES
+        self.history_table = table
+        self.val_pred_table = val_table
+        self.test_pred_table = test_table
     # def cross_validation(
     #     self,
     #     seed=2,
