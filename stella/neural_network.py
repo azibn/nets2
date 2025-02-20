@@ -168,57 +168,55 @@ class ConvNN(object):
             l2val = 0.001
             activation = 'relu'
 
-            # # CONVOLUTIONAL LAYERS
-            # model.add(
-            #     tf.keras.layers.Conv1D(
-            #         filters=filter1,
-            #         kernel_size=kernel1,
-            #         activation=activation,
-            #         padding="same",
-            #         input_shape=(self.cadences, 1), kernel_regularizer=l2(l2val)))  
-            # model.add(tf.keras.layers.MaxPooling1D(pool_size=pool))
-            # model.add(tf.keras.layers.Dropout(dropout))
-            # model.add(
-            #     tf.keras.layers.Conv1D(
-            #         filters=filter2, kernel_size=kernel2, activation=activation, padding="same", kernel_regularizer=l2(l2val)))
+            # OG CONVOLUTIONAL LAYERS
+            model.add(
+                tf.keras.layers.Conv1D(
+                    filters=filter1,
+                    kernel_size=kernel1,
+                    activation=activation,
+                    padding="same",
+                    input_shape=(self.cadences, 1), kernel_regularizer=l2(l2val)))  
+            model.add(tf.keras.layers.MaxPooling1D(pool_size=pool))
+            model.add(tf.keras.layers.Dropout(dropout))
+            model.add(
+                tf.keras.layers.Conv1D(
+                    filters=filter2, kernel_size=kernel2, activation=activation, padding="same", kernel_regularizer=l2(l2val)))
                 
-            # model.add(tf.keras.layers.MaxPooling1D(pool_size=pool))
+            model.add(tf.keras.layers.MaxPooling1D(pool_size=pool))
             
 
             # TEST NEW CNN LAYERS
 
-            model.add(tf.keras.layers.Conv1D(
-                filters=32,
-                kernel_size=9,
-                activation='relu',
-                padding="same",
-                input_shape=(self.cadences, 1),
-                kernel_regularizer=l2(l2val)))
-            model.add(tf.keras.layers.MaxPooling1D(pool_size=2))
-            model.add(tf.keras.layers.Dropout(dropout))
+            # model.add(tf.keras.layers.Conv1D(
+            #     filters=32,
+            #     kernel_size=9,
+            #     activation='relu',
+            #     padding="same",
+            #     input_shape=(self.cadences, 1),
+            #     kernel_regularizer=l2(l2val)))
+            # model.add(tf.keras.layers.MaxPooling1D(pool_size=2))
+            # model.add(tf.keras.layers.Dropout(dropout))
 
-            # Second conv layer
-            model.add(tf.keras.layers.Conv1D(
-                filters=64,
-                kernel_size=7,
-                activation='relu',
-                padding="same",
-                kernel_regularizer=l2(l2val)))
-            model.add(tf.keras.layers.MaxPooling1D(pool_size=2))
-            model.add(tf.keras.layers.Dropout(dropout))
+            # # Second conv layer
+            # model.add(tf.keras.layers.Conv1D(
+            #     filters=64,
+            #     kernel_size=7,
+            #     activation='relu',
+            #     padding="same",
+            #     kernel_regularizer=l2(l2val)))
+            # model.add(tf.keras.layers.MaxPooling1D(pool_size=2))
+            # model.add(tf.keras.layers.Dropout(dropout))
 
-            # Third conv layer (new)
-            model.add(tf.keras.layers.Conv1D(
-                filters=128,
-                kernel_size=5,
-                activation='relu',
-                padding="same",
-                kernel_regularizer=l2(l2val)))
-            model.add(tf.keras.layers.MaxPooling1D(pool_size=2))
-            model.add(tf.keras.layers.Dropout(dropout))
-
-
-
+            # # Third conv layer (new)
+            # model.add(tf.keras.layers.Conv1D(
+            #     filters=128,
+            #     kernel_size=5,
+            #     activation='relu',
+            #     padding="same",
+            #     kernel_regularizer=l2(l2val)))
+            # model.add(tf.keras.layers.MaxPooling1D(pool_size=2))
+            # model.add(tf.keras.layers.Dropout(dropout))
+            
 
             # LSTM LAYERS
             # model.add(
@@ -497,8 +495,8 @@ class ConvNN(object):
         # SAVES TABLE IS SAVE IS TRUE
         if save is True:
             fmt_table = "_i{0:04d}_b{1}.txt".format(int(epochs), self.frac_balance)
-            hist_fmt = "ensemble_histories" + fmt_table
-            pred_fmt = "ensemble_predval" + fmt_table
+            hist_fmt = f"ensemble_{int(seed)}_histories" + fmt_table
+            pred_fmt = f"ensemble_{int(seed)}_predval" + fmt_table
 
             table.write(os.path.join(self.output_dir, hist_fmt), format="ascii",overwrite=True)
             val_table.write(
