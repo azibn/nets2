@@ -414,8 +414,8 @@ if __name__ == "__main__":
                 
                 # histories and predictions are saved for the final optimised model (it is optional for the non-optimised ones)
                 fmt_table = f"_i{args.e:04d}_b{cnn.frac_balance}.txt"
-                hist_fmt = "ensemble_histories" + fmt_table
-                pred_fmt = "ensemble_predval" + fmt_table
+                hist_fmt = f"ensemble_histories_opt_{int(seed)}" + fmt_table
+                pred_fmt = f"ensemble_predval_opt_{int(seed)}" + fmt_table
                 
                 cnn.history_table.write(os.path.join(cnn.output_dir, hist_fmt), format="ascii",overwrite=True)
                 cnn.val_pred_table.write(
