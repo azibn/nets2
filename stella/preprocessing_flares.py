@@ -537,13 +537,13 @@ class FlareDataSet(object):
 
 
             self.full_matrix = np.concatenate(
-                [self.full_matrix, o.training_matrix]
+                [self.full_matrix, o.full_matrix]
             )
             self.labels = np.concatenate([self.labels, o.labels])
             self.original_labels = np.concatenate(
                 [self.original_labels, o.original_labels]
             )
-            self.full_ids = np.concatenate([self.full_ids, o.training_ids])
+            self.full_ids = np.concatenate([self.full_ids, o.full_ids])
             self.full_peaks = np.concatenate(
                 [self.full_peaks, o.training_peaks]
             )
