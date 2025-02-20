@@ -545,7 +545,7 @@ class FlareDataSet(object):
             )
             self.full_ids = np.concatenate([self.full_ids, o.full_ids])
             self.full_peaks = np.concatenate(
-                [self.full_peaks, o.training_peaks]
+                [self.full_peaks, o.full_peaks]
             )
 
             self.ids = np.concatenate([self.ids, o.ids])
