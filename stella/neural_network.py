@@ -183,6 +183,7 @@ class ConvNN(object):
                     filters=filter2, kernel_size=kernel2, activation=activation, padding="same", kernel_regularizer=l2(l2val)))
                 
             model.add(tf.keras.layers.MaxPooling1D(pool_size=pool))
+            model.add(tf.keras.layers.Dropout(dropout))
             
 
             # TEST NEW CNN LAYERS
