@@ -502,7 +502,7 @@ class ConvNN(object):
                 )
 
                 if pred_test is True:
-                    test_fmt = "ensemble_predtest" + fmt_table
+                    test_fmt = f"ensemble_predtest_{int(seed)}" + fmt_table
                     test_table.write(
                         os.path.join(self.output_dir, test_fmt),
                         format="ascii",
