@@ -52,8 +52,8 @@ def create_model_with_params(cnn_instance, params):
     """Create model with specified parameters"""
     model = tf.keras.models.Sequential([
         tf.keras.layers.Conv1D(
-            filters=params['filter1'],
-            kernel_size=params['kernel1'],
+            filters=16,
+            kernel_size=7,
             activation="relu",
             padding="same",
             input_shape=(cnn_instance.cadences, 1),
@@ -62,8 +62,8 @@ def create_model_with_params(cnn_instance, params):
         tf.keras.layers.MaxPooling1D(pool_size=2),
         tf.keras.layers.Dropout(params['dropout']),
         tf.keras.layers.Conv1D(
-            filters=params['filter2'],
-            kernel_size=params['kernel2'],
+            filters=64,
+            kernel_size=3,
             activation="relu",
             padding="same",
             kernel_regularizer=tf.keras.regularizers.l2(params['l2_lambda'])
@@ -94,12 +94,12 @@ def create_model_with_params(cnn_instance, params):
 
 def objective(trial, cnn_instance):
 
-    filter1 = trial.suggest_int("filter1", 16, 32, step=16)
-    filter2 = trial.suggest_int("filter2", 32, 128, step=16)
+    #filter1 = trial.suggest_int("filter1", 16, 32, step=16)
+    #filter2 = trial.suggest_int("filter2", 32, 128, step=16)
     #filter3 = trial.suggest_int("filter3", 64, 128, step=16)
 
-    kernel1 = trial.suggest_int("kernel1", 7,15, step=2)
-    kernel2 = trial.suggest_int("kernel2", 5,7, step=2)
+    #kernel1 = trial.suggest_int("kernel1", 7,15, step=2)
+    #kernel2 = trial.suggest_int("kernel2", 5,7, step=2)
     #kernel3 = trial.suggest_int("kernel3", 3,5, step=2)
 
     # Only tune regularization parameters
@@ -113,11 +113,11 @@ def objective(trial, cnn_instance):
         'l2_lambda': l2_lambda,
         'learning_rate': learning_rate,
         'batch_size': batch_size,
-        'filter1': filter1,
-        'filter2': filter2,
+        #'filter1': filter1,
+        #'filter2': filter2,
         #'filter3': filter3,
-        'kernel1': kernel1,
-        'kernel2': kernel2,
+        #'kernel1': kernel1,
+        #'kernel2': kernel2,
         #'kernel3': kernel3
     }
     
