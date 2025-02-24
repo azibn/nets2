@@ -17,6 +17,7 @@ import io
 from memory_profiler import profile
 sys.path.insert(1, "../scripts")
 sys.path.insert(1, "../stella")
+import psutil
 
 
 from utils import *
@@ -256,52 +257,84 @@ def load_predictions(file_path):
 
 def main():
     start_time = time.time()
-
+    
     pipeline = PIPELINE[args.p]
     models = find_models(args.model)
-
+    
+    batch_size = 10000
+    
     total_results = 0
-    pool = None  # Initialize pool variable outside try block
     
     try:
+        pool = multiprocessing.Pool(
+            processes=min(args.threads, 20),  # Limit max processes
+            initializer=init_cnn,
+            initargs=(args.ds,)
+        )
+        
+        # Get all files to process
+        print("Finding lightcurve files...")
+        file_list = list(load_lightcurves_generator(args.path))
+        total_files = len(file_list)
+        print(f"Found {total_files} lightcurve files")
+        
+        # Calculate total number of batches
+        num_batches = (total_files + batch_size - 1) // batch_size
+        
+        # Open the output file
         with open(args.o, "ab") as f:
-            pool = multiprocessing.Pool(
-                processes=args.threads,
-                initializer=init_cnn,
-                initargs=(args.ds,)
-            )
-            
-            total_files = sum(1 for _ in load_lightcurves_generator(args.path))
-            lc_args = ((lc, pipeline, models, args.threshold) 
-                      for lc in load_lightcurves_generator(args.path))
-
-            tqdmbar = tqdm(desc="Processing lightcurves", 
-                         unit=" lightcurves",
-                         total=total_files)
-            
-            for result in pool.imap_unordered(process_single_lightcurve, lc_args):
-                if result is None:
-                    continue
-                pickle.dump(result, f)
-                f.flush()
-                total_results += 1
-                tqdmbar.update(1)
-            
-            tqdmbar.close()
-
+            # Process files in batches
+            for batch_num in range(num_batches):
+                # Calculate batch range
+                start_idx = batch_num * batch_size
+                end_idx = min((batch_num + 1) * batch_size, total_files)
+                
+                print(f"Processing batch {batch_num+1}/{num_batches} (files {start_idx} to {end_idx-1})")
+                
+                # Get files for this batch
+                batch_files = file_list[start_idx:end_idx]
+                
+                # Prepare arguments for processing
+                lc_args = [(lc_file, pipeline, models, args.threshold) for lc_file in batch_files]
+                
+                # Process batch with progress bar
+                batch_results = 0
+                with tqdm(total=len(batch_files), desc=f"Batch {batch_num+1}/{num_batches}") as pbar:
+                    for result in pool.imap_unordered(process_single_lightcurve, lc_args):
+                        if result is not None:
+                            pickle.dump(result, f)
+                            f.flush()
+                            batch_results += 1
+                            total_results += 1
+                        pbar.update(1)
+                
+                # Report memory usage after each batch
+                memory_usage = psutil.Process().memory_info().rss / (1024**3)
+                print(f"Batch {batch_num+1} complete: {batch_results}/{len(batch_files)} successful. Memory: {memory_usage:.2f} GB")
+                
+                # Force garbage collection between batches
+                gc.collect()
+        
+        # Close the pool
+        pool.close()
+        pool.join()
+        
     except KeyboardInterrupt:
         print("Script interrupted by user. Exiting...")
-        if pool:
+        if 'pool' in locals() and pool:
             pool.terminate()
-    finally:
-        if pool:
-            pool.close()
             pool.join()
-
-    print(f"Total results processed: {total_results}")
+    except Exception as e:
+        print(f"Error in main processing loop: {e}")
+        if 'pool' in locals() and pool:
+            pool.terminate()
+            pool.join()
+    
+    print(f"Total results processed: {total_results}/{total_files}")
     end_time = time.time()
     elapsed_time = (end_time - start_time) / 60
     print(f"Script executed in {elapsed_time:.2f} minutes")
+
 
 if __name__ == "__main__":
     with open(args.ds, "rb") as file:
