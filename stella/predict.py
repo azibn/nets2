@@ -137,54 +137,36 @@ def find_models(path):
 
 
 def process_lightcurve(path, pipeline):
-    """
-    Import lightcurve and normalise the flux to be between 0 and 1.
-    
-    Params:
-    -------
-    path: str
-        Path to the lightcurve file.
-    pipeline: dict
-        Dataset/mission pipeline configuration. Currently supports eleanor-lite and SPOC for TESS, and EVEREST for K2.
-
-    Returns:
-    --------
-    ID: int
-        ID of the target.
-    time: np.array
-        Time array.
-    flux: np.array
-        Scaled flux array.
-    flux_error: np.array    
-        Flux error array.
-        
-    """
-
-    if path.endswith('.fits'):
+    # Only load and keep what's absolutely necessary
+    try:
         try:
             lc, info = import_lightcurve(path)
         except OSError:
             return None
-        time, flux, flux_error = (
-            lc[pipeline["time"]],
-            lc[pipeline["flux"]], 
-            lc[pipeline["flux_err"]]
-        )
-
-        original_flux = np.copy(flux) / np.nanmedian(flux)
-        original_time = np.copy(time)
-
-        time, flux, flux_error = scale_lightcurve(time, flux, flux_error)
-    else:  
-        try:
-            data = np.load(path, allow_pickle=True)
-            time, flux, flux_error = data[0], data[1], data[2]
-            info = {'TIC_ID': int(path.split('/')[-1].split('_')[0])}
-            return info['TIC_ID'], time, flux, flux_error
-        except:
-            return None
             
-    return info[pipeline["id"]], time, flux, flux_error, original_flux, original_time
+        time = np.array(lc[pipeline["time"]])
+        flux = np.array(lc[pipeline["flux"]])
+        flux_error = np.array(lc[pipeline["flux_err"]])
+        
+        # Handle NaN values more efficiently
+        mask = ~np.isnan(time) & ~np.isnan(flux) & ~np.isnan(flux_error)
+        time = time[mask]
+        flux = flux[mask]
+        flux_error = flux_error[mask]
+        
+        # Keep original data only for interesting events
+        original_time = time.copy()
+        original_flux = flux / np.nanmedian(flux)
+        
+        # Scale the flux
+        flux = flux / np.nanmedian(flux) - 1
+        flux = (flux - np.min(flux)) / (np.max(flux) - np.min(flux))
+        
+        return info[pipeline["id"]], time, flux, flux_error, original_flux, original_time
+
+    except Exception as e:
+        print(f"Error processing {path}: {e}")
+        return None
 
 
 def scale_lightcurve(time, flux, flux_error):
@@ -202,34 +184,42 @@ def scale_lightcurve(time, flux, flux_error):
 
 # @profile
 def process_single_lightcurve(args):
-
     global cnn
-
     lc_path, pipeline, models, threshold = args
-    try:
-        source_id, time, flux, flux_error, original_flux, original_time = process_lightcurve(lc_path, pipeline)
-    except TypeError:
-        return None
     
     try:
-
-
+        result = process_lightcurve(lc_path, pipeline)
+        if result is None:
+            return None
+            
+        source_id, time, flux, flux_error, original_flux, original_time = result
+        
+        # Pre-allocate array for predictions
         preds = np.zeros((len(models), len(time)))
+        
         for i, model in enumerate(models):
             try:
+                # Clear previous predictions
+                if hasattr(cnn, 'predictions'):
+                    del cnn.predictions
+                    
                 cnn.predict(modelname=model, times=time, fluxes=flux, errs=flux_error)
                 preds[i] = cnn.predictions[0]
-
-            except ValueError:
-                print("Error predicting lightcurve: empty.")
+                
+                # Force garbage collection after each model prediction
+                gc.collect()
+            except Exception as e:
+                print(f"Error with model {model}: {e}")
                 preds[i] = np.nan
-
+        
+        # Find best prediction
         avg_pred = np.nanmedian(preds, axis=0)
         arg = np.argmax(avg_pred)
         pred = avg_pred[arg]
-        t_pred = cnn.predict_time[0][arg]
+        t_pred = time[arg]  # Simplify this - no need to use cnn.predict_time
         is_interesting = 1 if pred > threshold else 0
-
+        
+        # Include all data for every lightcurve
         results = {
             "ID": source_id,
             "t_pred": t_pred,
@@ -237,21 +227,18 @@ def process_single_lightcurve(args):
             "is_interesting": is_interesting,
             "original_time": original_time,
             "original_flux": original_flux,
+            "time": time,
+            "flux": flux,
+            "predictions": avg_pred
         }
-
-        results["time"] = time
-        results["flux"] = flux
-        results["predictions"] = avg_pred
-
-        del time, flux, flux_error, preds, avg_pred
+        
+        # Explicit cleanup
+        del time, flux, flux_error, preds, avg_pred, result
         gc.collect()
+        
         return results
-
-    except FileNotFoundError:
-        print("File not found")
-        return None
-    
-    except OSError:
+    except Exception as e:
+        print(f"Failed to process {lc_path}: {e}")
         return None
 
 
