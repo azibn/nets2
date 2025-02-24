@@ -170,6 +170,10 @@ def process_lightcurve(path, pipeline):
             lc[pipeline["flux"]], 
             lc[pipeline["flux_err"]]
         )
+
+        original_flux = np.copy(flux) / np.nanmedian(flux)
+        original_time = np.copy(time)
+
         time, flux, flux_error = scale_lightcurve(time, flux, flux_error)
     else:  
         try:
@@ -180,7 +184,7 @@ def process_lightcurve(path, pipeline):
         except:
             return None
             
-    return info[pipeline["id"]], time, flux, flux_error
+    return info[pipeline["id"]], time, flux, flux_error, original_flux, original_time
 
 
 def scale_lightcurve(time, flux, flux_error):
@@ -203,7 +207,7 @@ def process_single_lightcurve(args):
 
     lc_path, pipeline, models, threshold = args
     try:
-        source_id, time, flux, flux_error = process_lightcurve(lc_path, pipeline)
+        source_id, time, flux, flux_error, original_flux, original_time = process_lightcurve(lc_path, pipeline)
     except TypeError:
         return None
     
@@ -231,9 +235,10 @@ def process_single_lightcurve(args):
             "t_pred": t_pred,
             "pred": pred,
             "is_interesting": is_interesting,
+            "original_time": original_time,
+            "original_flux": original_flux,
         }
 
-        #if is_interesting:
         results["time"] = time
         results["flux"] = flux
         results["predictions"] = avg_pred
