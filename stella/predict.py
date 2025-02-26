@@ -19,7 +19,6 @@ sys.path.insert(1, "../scripts")
 sys.path.insert(1, "../stella")
 import psutil
 
-
 from utils import *
 
 os.nice(4)
@@ -136,7 +135,7 @@ def find_models(path):
             model_paths.append(p)
     return model_paths
 
-
+# @profile
 def process_lightcurve(path, pipeline):
     # Only load and keep what's absolutely necessary
     try:
@@ -254,7 +253,7 @@ def load_predictions(file_path):
                 break
     return data
 
-
+@profile
 def main():
     start_time = time.time()
     
@@ -346,4 +345,11 @@ if __name__ == "__main__":
 
     main()
 
+    pr.disable()
+
+    s = io.StringIO()
+    sortby = 'cumulative'
+    ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+    ps.print_stats()
+    print(s.getvalue())
     sys.exit(0)

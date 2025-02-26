@@ -150,7 +150,7 @@ def optimise_hyperparameters(cnn_instance, n_trials=100,name='cnn_optimisation.d
     study.optimize(
         lambda trial: objective(trial, cnn_instance), 
         n_trials=n_trials,
-        n_jobs=int(multiprocessing.cpu_count()/2)
+        n_jobs= 25 # int(multiprocessing.cpu_count()/2)
     )
 
     print("Best trial:")

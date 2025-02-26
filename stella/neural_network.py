@@ -157,15 +157,17 @@ class ConvNN(object):
         # DEFAULT NETWORK MODEL FROM FEINSTEIN ET AL. (in prep)
         if self.layers is None:
             kernel1 = 7
-            kernel2 = 3
+            kernel2 = 7
+            kernel3= 7
             pool = 2
-            filter1 = 16
+            filter1 = 32
             filter2 = 64
-            dense = 32
+            filter3 = 128
+            dense = 64
             lstm_units1 = 64
             lstm_units2 = 32
-            dropout = 0.1
-            l2val = 0.001
+            dropout = 0.2
+            l2val = 0.0005
             activation = 'relu'
 
             # OG CONVOLUTIONAL LAYERS
@@ -180,11 +182,15 @@ class ConvNN(object):
             model.add(tf.keras.layers.Dropout(dropout))
             model.add(
                 tf.keras.layers.Conv1D(
-                    filters=filter2, kernel_size=kernel2, activation=activation, padding="same", kernel_regularizer=l2(l2val)))
+                    filters=filter2, kernel_size=kernel2, dilation_rate=2, activation=activation, padding="same", kernel_regularizer=l2(l2val)))
                 
             model.add(tf.keras.layers.MaxPooling1D(pool_size=pool))
             model.add(tf.keras.layers.Dropout(dropout))
             
+            model.add(tf.keras.layers.Conv1D(filters=filter3, kernel_size=kernel3, activation=activation, dilation_rate = 4, padding='same',kernel_regularizer=l2(l2val)))
+            model.add(tf.keras.layers.GlobalAveragePooling1D())
+            model.add(tf.keras.layers.Dropout(dropout))
+
 
             # TEST NEW CNN LAYERS
 
@@ -240,7 +246,7 @@ class ConvNN(object):
             # model.add(tf.keras.layers.Dropout(dropout))
 
             # DENSE LAYERS AND SOFTMAX OUTPUT
-            model.add(tf.keras.layers.Flatten())
+             # model.add(tf.keras.layers.Flatten())
             model.add(tf.keras.layers.Dense(dense, activation=activation, kernel_regularizer=l2(l2val)))
             model.add(tf.keras.layers.Dropout(dropout))
             model.add(
@@ -415,7 +421,7 @@ class ConvNN(object):
                 batch_size=batch_size,
                 shuffle=shuffle,
                 validation_data=(self.ds.val_data, val_labels),
-                callbacks = [tensorboard_callback,test_callback] #, self.early_stopping] # ,reduce_lr, ]
+                callbacks = [tensorboard_callback,test_callback, self.early_stopping] # ,reduce_lr, ]
             )
 
             col_names = list(self.history.history.keys())

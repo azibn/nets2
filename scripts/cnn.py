@@ -373,7 +373,7 @@ if __name__ == "__main__":
     
         if args.optimise_bayes:
             print("Optimising hyperparameters with Optuna...")
-            best_params = optimise.optimise_hyperparameters(cnn, n_trials=100, name=args.optimise_bayes_name)
+            best_params = optimise.optimise_hyperparameters(cnn, n_trials=50, name=args.optimise_bayes_name)
             
             print("Training final model with best parameters...")
             for seed in args.seed:
