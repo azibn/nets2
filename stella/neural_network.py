@@ -163,11 +163,11 @@ class ConvNN(object):
             filter1 = 32
             filter2 = 64
             filter3 = 128
-            dense = 64
+            dense = 32
             lstm_units1 = 64
             lstm_units2 = 32
-            dropout = 0.2
-            l2val = 0.0005
+            dropout = 0.1
+            l2val = 0.0001
             activation = 'relu'
 
             # OG CONVOLUTIONAL LAYERS
@@ -187,9 +187,9 @@ class ConvNN(object):
             model.add(tf.keras.layers.MaxPooling1D(pool_size=pool))
             model.add(tf.keras.layers.Dropout(dropout))
             
-            model.add(tf.keras.layers.Conv1D(filters=filter3, kernel_size=kernel3, activation=activation, dilation_rate = 4, padding='same',kernel_regularizer=l2(l2val)))
-            model.add(tf.keras.layers.GlobalAveragePooling1D())
-            model.add(tf.keras.layers.Dropout(dropout))
+            #model.add(tf.keras.layers.Conv1D(filters=filter3, kernel_size=kernel3, activation=activation, dilation_rate = 4, padding='same',kernel_regularizer=l2(l2val)))
+            #model.add(tf.keras.layers.GlobalAveragePooling1D())
+            #model.add(tf.keras.layers.Dropout(dropout))
 
 
             # TEST NEW CNN LAYERS
@@ -246,7 +246,7 @@ class ConvNN(object):
             # model.add(tf.keras.layers.Dropout(dropout))
 
             # DENSE LAYERS AND SOFTMAX OUTPUT
-             # model.add(tf.keras.layers.Flatten())
+            model.add(tf.keras.layers.Flatten())
             model.add(tf.keras.layers.Dense(dense, activation=activation, kernel_regularizer=l2(l2val)))
             model.add(tf.keras.layers.Dropout(dropout))
             model.add(
