@@ -144,9 +144,13 @@ def process_lightcurve(path, pipeline):
         except OSError:
             return None
             
-        time = np.array(lc[pipeline["time"]])
-        flux = np.array(lc[pipeline["flux"]])
-        flux_error = np.array(lc[pipeline["flux_err"]])
+        # Extract only the columns we need to reduce memory usage
+        time = np.array(lc[pipeline["time"]], dtype=np.float32)  # Use float32 instead of float64
+        flux = np.array(lc[pipeline["flux"]], dtype=np.float32)
+        flux_error = np.array(lc[pipeline["flux_err"]], dtype=np.float32)
+        
+        # Free memory from the original loaded data
+        del lc
         
         # Handle NaN values more efficiently
         mask = ~np.isnan(time) & ~np.isnan(flux) & ~np.isnan(flux_error)
@@ -154,15 +158,20 @@ def process_lightcurve(path, pipeline):
         flux = flux[mask]
         flux_error = flux_error[mask]
         
-        # Keep original data only for interesting events
-        original_time = time.copy()
-        original_flux = flux / np.nanmedian(flux)
+        # Get source ID before clearing info dict
+        source_id = info[pipeline["id"]]
+        del info
+        
+        # Process flux in place to save memory
+        flux_median = np.nanmedian(flux)
+        original_flux = flux / flux_median
         
         # Scale the flux
-        flux = flux / np.nanmedian(flux) - 1
-        flux = (flux - np.min(flux)) / (np.max(flux) - np.min(flux))
+        flux = (flux / flux_median) - 1
+        flux_min, flux_max = np.min(flux), np.max(flux)
+        flux = (flux - flux_min) / (flux_max - flux_min)
         
-        return info[pipeline["id"]], time, flux, flux_error, original_flux, original_time
+        return source_id, time, flux, flux_error, original_flux, time
 
     except Exception as e:
         print(f"Error processing {path}: {e}")
@@ -194,8 +203,8 @@ def process_single_lightcurve(args):
             
         source_id, time, flux, flux_error, original_flux, original_time = result
         
-        # Pre-allocate array for predictions
-        preds = np.zeros((len(models), len(time)))
+        # Use float32 to reduce memory usage
+        preds = np.zeros((len(models), len(time)), dtype=np.float32)
         
         for i, model in enumerate(models):
             try:
@@ -213,10 +222,10 @@ def process_single_lightcurve(args):
                 preds[i] = np.nan
         
         # Find best prediction
-        avg_pred = np.nanmedian(preds, axis=0)
+        avg_pred = np.nanmedian(preds, axis=0).astype(np.float32)
         arg = np.argmax(avg_pred)
-        pred = avg_pred[arg]
-        t_pred = time[arg]  # Simplify this - no need to use cnn.predict_time
+        pred = float(avg_pred[arg])  # Convert to simple float to reduce memory
+        t_pred = float(time[arg])    # Convert to simple float to reduce memory
         is_interesting = 1 if pred > threshold else 0
         
         # Include all data for every lightcurve
@@ -233,7 +242,7 @@ def process_single_lightcurve(args):
         }
         
         # Explicit cleanup
-        del time, flux, flux_error, preds, avg_pred, result
+        del time, flux, flux_error, preds, avg_pred, result, original_time, original_flux
         gc.collect()
         
         return results
@@ -260,15 +269,21 @@ def main():
     pipeline = PIPELINE[args.p]
     models = find_models(args.model)
     
-    batch_size = 10000
+    # Reduce batch size to prevent excessive memory usage
+    batch_size = 2000
+    
+    # Maximum number of tasks in the queue to prevent memory buildup
+    max_tasks_per_child = 50
     
     total_results = 0
     
     try:
+        # Create pool with maxtasksperchild to prevent memory leaks
         pool = multiprocessing.Pool(
-            processes=min(args.threads, 20),  # Limit max processes
+            processes=min(args.threads, multiprocessing.cpu_count()),
             initializer=init_cnn,
-            initargs=(args.ds,)
+            initargs=(args.ds,),
+            maxtasksperchild=max_tasks_per_child  # Recycle workers to prevent memory buildup
         )
         
         # Get all files to process
@@ -280,7 +295,7 @@ def main():
         # Calculate total number of batches
         num_batches = (total_files + batch_size - 1) // batch_size
         
-        # Open the output file
+        # Use a context manager for the output file
         with open(args.o, "ab") as f:
             # Process files in batches
             for batch_num in range(num_batches):
@@ -289,20 +304,26 @@ def main():
                 end_idx = min((batch_num + 1) * batch_size, total_files)
                 
                 print(f"Processing batch {batch_num+1}/{num_batches} (files {start_idx} to {end_idx-1})")
+                print(f"Current memory usage: {psutil.Process().memory_info().rss / (1024**3):.2f} GB")
                 
                 # Get files for this batch
                 batch_files = file_list[start_idx:end_idx]
                 
-                # Prepare arguments for processing
-                lc_args = [(lc_file, pipeline, models, args.threshold) for lc_file in batch_files]
+                # Prepare arguments for processing - generate on-the-fly with smaller chunks
+                lc_args = ((lc_file, pipeline, models, args.threshold) for lc_file in batch_files)
                 
-                # Process batch with progress bar
+                # Process batch with progress bar and chunksize to better control memory
                 batch_results = 0
+                chunksize = max(1, min(100, len(batch_files) // (pool._processes * 4)))
+                
                 with tqdm(total=len(batch_files), desc=f"Batch {batch_num+1}/{num_batches}") as pbar:
-                    for result in pool.imap_unordered(process_single_lightcurve, lc_args):
+                    # Use imap instead of imap_unordered with specific chunksize to control memory better
+                    for result in pool.imap(process_single_lightcurve, lc_args, chunksize=chunksize):
                         if result is not None:
                             pickle.dump(result, f)
-                            f.flush()
+                            # Only flush occasionally to reduce I/O overhead
+                            if batch_results % 50 == 0:
+                                f.flush()
                             batch_results += 1
                             total_results += 1
                         pbar.update(1)
@@ -313,6 +334,9 @@ def main():
                 
                 # Force garbage collection between batches
                 gc.collect()
+                
+                # Give the system a moment to clean up memory
+                time.sleep(1)
         
         # Close the pool
         pool.close()
