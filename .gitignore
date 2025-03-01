@@ -9,8 +9,8 @@ optuna_study.db
 
 ## folders
 plots*
+cnn-models-*
 notebooks/*.png
-cnn-models*
 notebooks/grant-test/
 notebooks/gradcam_results
 outputs/

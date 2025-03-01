@@ -5,7 +5,6 @@ import glob
 import time
 import argparse
 import numpy as np
-import stella
 import concurrent.futures
 import multiprocessing
 from tqdm import tqdm
@@ -15,8 +14,10 @@ import cProfile
 import pstats
 import io
 from memory_profiler import profile
-sys.path.insert(1, "../scripts")
-sys.path.insert(1, "../stella")
+sys.path.insert(1, 'scripts')
+sys.path.insert(1, 'stella')
+
+import stella
 import psutil
 
 from utils import *
@@ -270,10 +271,10 @@ def main():
     models = find_models(args.model)
     
     # Reduce batch size to prevent excessive memory usage
-    batch_size = 2000
+    batch_size = 10000
     
     # Maximum number of tasks in the queue to prevent memory buildup
-    max_tasks_per_child = 50
+    max_tasks_per_child = 1000
     
     total_results = 0
     
