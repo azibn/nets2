@@ -123,6 +123,14 @@ parser.add_argument(
     dest="dsn",
 )
 
+parser.add_argument(
+    "-l", "--layers",
+    help="Path to a Python file defining model architecture",
+    type=str,
+    dest="layers",
+    default=None
+)
+
 # Mutually exclusive group
 group = parser.add_mutually_exclusive_group()
 group.add_argument(
@@ -130,8 +138,9 @@ group.add_argument(
     "--load-data",
     help="Load a pre-defined dataset. Dataset must be in .pkl format.",
     action="store_true",
-    dest="load_dataset"
+    dest="load_dataset",
 )
+
 
 args = parser.parse_args()
 
@@ -353,10 +362,22 @@ if __name__ == "__main__":
 
     cnn_dir = os.path.join(os.getcwd(), 'cnn-models')
 
-    cnn = stella.ConvNN(
-        output_dir=cnn_dir,
-        ds=dataset,
-    )  # ,layers=layers)
+    if args.layers:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("layer", args.layers)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        
+        layers = module.create_model_layers(input_shape=(args.c, 1))
+        cnn = stella.ConvNN(
+            output_dir=cnn_dir,
+            ds=dataset,
+            layers=layers)
+        print(f"CNN initialised with custom layers from {args.layers}")
+    else:
+        cnn = stella.ConvNN(
+            output_dir=cnn_dir,
+            ds=dataset)
 
     print("CNN initialised.")
     print("Training sample %:", args.training)
@@ -381,7 +402,7 @@ if __name__ == "__main__":
                     cnn, 
                     best_params, 
                     epochs=args.e, 
-                    seed=seed
+                    seed=seed,
                 )
                     
                 # Create and populate val_pred_table
