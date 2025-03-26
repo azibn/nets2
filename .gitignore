@@ -5,9 +5,11 @@
 data/
 models/
 catalogs/
-optuna_study.db
+
 
 ## folders
+datasets*
+predict-data*
 plots*
 cnn-models-*
 notebooks/*.png
@@ -16,11 +18,12 @@ notebooks/gradcam_results
 outputs/
 logs/
 modelplots/
-testdata/
+predict_data/
 catalogs*
 model*
 inj-rec*
 *.tar.gz
+optuna_tuning*
 
 ## stella stuff that i don't need
 docs/
