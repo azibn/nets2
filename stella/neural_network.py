@@ -154,20 +154,20 @@ class ConvNN(object):
 
         model = keras.models.Sequential()
 
-        # DEFAULT NETWORK MODEL FROM FEINSTEIN ET AL. (in prep)
+        # DEFAULT NETWORK MODEL FROM FEINSTEIN ET AL. (2020))
         if self.layers is None:
             kernel1 = 7
-            kernel2 = 7
+            kernel2 = 3
             kernel3= 7
             pool = 2
-            filter1 = 32
+            filter1 = 16
             filter2 = 64
             filter3 = 128
             dense = 32
             lstm_units1 = 64
             lstm_units2 = 32
-            dropout = 0.1
-            l2val = 0.0001
+            dropout = 0.25
+            l2val = 0.001
             activation = 'relu'
 
             # OG CONVOLUTIONAL LAYERS
@@ -182,7 +182,7 @@ class ConvNN(object):
             model.add(tf.keras.layers.Dropout(dropout))
             model.add(
                 tf.keras.layers.Conv1D(
-                    filters=filter2, kernel_size=kernel2, dilation_rate=2, activation=activation, padding="same", kernel_regularizer=l2(l2val)))
+                    filters=filter2, kernel_size=kernel2, activation=activation, padding="same", kernel_regularizer=l2(l2val)))
                 
             model.add(tf.keras.layers.MaxPooling1D(pool_size=pool))
             model.add(tf.keras.layers.Dropout(dropout))
@@ -259,7 +259,7 @@ class ConvNN(object):
 
         early_stopping = EarlyStopping(
         monitor='val_loss',
-        patience=30,
+        patience=20,
         restore_best_weights=True
         )
 

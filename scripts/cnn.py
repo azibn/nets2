@@ -148,110 +148,76 @@ def plot_metrics(cnn, seed):
     """
     Plots the output metrics from the CNN model for a single seed.
     """
-    custom_cmap = mcolors.ListedColormap(["yellow", "darkblue", "red", "green"])
+    # Create a custom colormap
+    custom_cmap = mcolors.ListedColormap(['yellow', 'darkblue', 'red', 'cyan'])
     formatted_seed = f"{seed:04}"
-
-    fig, axes = plt.subplots(3, 2, figsize=(18, 18))
-
-    # Top row: Original validation scatter plots
+    
+    fig, axes = plt.subplots(2, 2, figsize=(13, 8))
+    
+    # Top left: Validation predictions colored by original labels
     sc = axes[0, 0].scatter(
-        cnn.val_pred_table["tpeak"],
-        cnn.val_pred_table[f"pred_s{formatted_seed}"],
-        c=cnn.val_pred_table["labels"],
-        cmap=custom_cmap,
-        label=f"Seed {formatted_seed}"
+        cnn.val_pred_table['tpeak'], 
+        cnn.val_pred_table[f'pred_s{formatted_seed}'],
+        c=cnn.val_pred_table['labels'], 
+        cmap=custom_cmap, 
+        label=f'Validation Seed {formatted_seed}',
+        s=5, alpha=0.8
     )
-    axes[0, 0].set_xlabel("Tpeak [BJD - 2457000]")
-    axes[0, 0].set_ylabel("Probability of Exocomet")
-    axes[0, 0].set_title("Validation Set Predictions")
-    plt.colorbar(sc, ax=axes[0, 0], ticks=np.arange(4), boundaries=np.arange(4 + 1) - 0.5)
-
-    # Middle row: Loss and accuracy with test metrics overlaid
-    # Loss plot
+    axes[0, 0].set_xlabel('Tpeak [BJD - 2457000]')
+    axes[0, 0].set_ylabel('Probability of Exocomet')
+    axes[0, 0].set_title('Probabilities (with the original labels)')
+    axes[0, 0].legend()
+    plt.colorbar(sc, ax=axes[0, 0], ticks=np.arange(4), boundaries=np.arange(4+1)-0.5)
+    
+    # Top right: Binary classification (gt)
+    sc2 = axes[0, 1].scatter(
+        cnn.val_pred_table['tpeak'], 
+        cnn.val_pred_table[f'pred_s{formatted_seed}'],
+        c=cnn.val_pred_table['gt'], 
+        label=f'Validation Seed {formatted_seed}',
+        s=5
+    )
+    axes[0, 1].set_xlabel('Tpeak [BJD - 2457000]')
+    axes[0, 1].set_ylabel('Probability of Exocomet')
+    axes[0, 1].set_title('Binary Classification')
+    axes[0, 1].legend()
+    plt.colorbar(sc2, ax=axes[0, 1])
+    
+    # Bottom left: Accuracy curves
     axes[1, 0].plot(
-        cnn.history_table[f"loss_s{formatted_seed}"],
-        label="Training",
+        cnn.history_table[f'accuracy_s{formatted_seed}'], 
+        label=f'Training Seed {formatted_seed}', 
         lw=3
     )
     axes[1, 0].plot(
-        cnn.history_table[f"val_loss_s{formatted_seed}"],
-        label="Validation",
+        cnn.history_table[f'val_accuracy_s{formatted_seed}'], 
+        label=f'Validation Seed {formatted_seed}', 
         lw=3
     )
-    if hasattr(cnn, 'test_pred_table') and cnn.test_pred_table is not None:
-        test_loss = tf.keras.losses.binary_crossentropy(
-            cnn.test_pred_table["gt"], 
-            cnn.test_pred_table[f"pred_s{formatted_seed}"]
-        )
-        axes[1, 0].axhline(y=np.mean(test_loss), 
-                          color='r', 
-                          linestyle='--',
-                          label="Test",
-                          lw=3)
-    axes[1, 0].set_xlabel("Epochs")
-    axes[1, 0].set_ylabel("Loss")
+    axes[1, 0].set_xlabel('Epochs')
+    axes[1, 0].set_ylabel('Accuracy')
+    axes[1, 0].set_title('Accuracy')
     axes[1, 0].legend()
-    axes[1, 0].set_title("Loss Curves")
-
-    # Accuracy plot
+    
+    # Bottom right: Loss curves
     axes[1, 1].plot(
-        cnn.history_table[f"accuracy_s{formatted_seed}"],
-        label="Training",
+        cnn.history_table[f'loss_s{formatted_seed}'], 
+        label=f'Training Seed {formatted_seed}', 
         lw=3
     )
     axes[1, 1].plot(
-        cnn.history_table[f"val_accuracy_s{formatted_seed}"],
-        label="Validation",
+        cnn.history_table[f'val_loss_s{formatted_seed}'], 
+        label=f'Validation Seed {formatted_seed}', 
         lw=3
     )
-    if hasattr(cnn, 'test_pred_table') and cnn.test_pred_table is not None:
-        test_acc = np.mean(
-            (cnn.test_pred_table[f"pred_s{formatted_seed}"] > 0.5) == 
-            cnn.test_pred_table["gt"]
-        )
-        axes[1, 1].axhline(y=test_acc, 
-                          color='r', 
-                          linestyle='--',
-                          label="Test",
-                          lw=3)
-    axes[1, 1].set_xlabel("Epochs")
-    axes[1, 1].set_ylabel("Accuracy")
+    axes[1, 1].set_xlabel('Epochs')
+    axes[1, 1].set_ylabel('Loss')
+    axes[1, 1].set_title('Loss')
     axes[1, 1].legend()
-    axes[1, 1].set_title("Accuracy Curves")
-
-    # Bottom row: Ground truth plots
-    # Validation ground truth
-    sc2 = axes[2, 0].scatter(
-        cnn.val_pred_table["tpeak"],
-        cnn.val_pred_table[f"pred_s{formatted_seed}"],
-        c=cnn.val_pred_table["gt"],
-        cmap=custom_cmap,
-        label=f"Seed {formatted_seed}"
-    )
-    axes[2, 0].set_xlabel("Tpeak [BJD - 2457000]")
-    axes[2, 0].set_ylabel("Probability of Exocomet")
-    axes[2, 0].set_title("Validation Set Ground Truth")
-    plt.colorbar(sc2, ax=axes[2, 0], ticks=np.arange(4), boundaries=np.arange(4 + 1) - 0.5)
-
-    # Test ground truth (if available)
-    if hasattr(cnn, 'test_pred_table') and cnn.test_pred_table is not None:
-        sc3 = axes[2, 1].scatter(
-            cnn.test_pred_table["tpeak"],
-            cnn.test_pred_table[f"pred_s{formatted_seed}"],
-            c=cnn.test_pred_table["gt"],
-            cmap=custom_cmap,
-            label=f"Seed {formatted_seed}"
-        )
-        axes[2, 1].set_xlabel("Tpeak [BJD - 2457000]")
-        axes[2, 1].set_ylabel("Probability of Exocomet")
-        axes[2, 1].set_title("Test Set Ground Truth")
-        plt.colorbar(sc3, ax=axes[2, 1], ticks=np.arange(4), boundaries=np.arange(4 + 1) - 0.5)
-    else:
-        axes[2, 1].axis('off')  # Hide the axis if no test data
 
     plt.tight_layout()
-    os.makedirs("plots/", exist_ok=True)
-    plt.savefig(f"plots/cnn-metrics-s{seed}.png", dpi=300)
+    os.makedirs("plots-es/", exist_ok=True)
+    plt.savefig(f"plots-es/cnn-metrics-s{seed}.png", dpi=300)
     plt.close()
 
 
@@ -435,8 +401,8 @@ if __name__ == "__main__":
                 
                 # histories and predictions are saved for the final optimised model (it is optional for the non-optimised ones)
                 fmt_table = f"_i{args.e:04d}_b{cnn.frac_balance}.txt"
-                hist_fmt = f"ensemble_histories_opt_{int(seed)}" + fmt_table
-                pred_fmt = f"ensemble_predval_opt_{int(seed)}" + fmt_table
+                hist_fmt = f"ensemble_histories_opt_{int(seed):04d}" + fmt_table
+                pred_fmt = f"ensemble_predval_opt_{int(seed):04d}" + fmt_table
                 
                 cnn.history_table.write(os.path.join(cnn.output_dir, hist_fmt), format="ascii",overwrite=True)
                 cnn.val_pred_table.write(
