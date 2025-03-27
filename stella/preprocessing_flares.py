@@ -597,15 +597,12 @@ class FlareDataSet(object):
         Parameters:
         ------------
         portion: float, optional
-<<<<<<< Updated upstream
             Total portion of the positive class to flip. Default is None.
         horizontal_ratio: float, optional
             Ratio of flips that should be horizontal. Default is 0.5 (50% of flips).
         vertical_ratio: float, optional
             Ratio of flips that should be vertical. Default is 0.5 (50% of flips).
-=======
             The portion of the positive class data to flip. Default is None.
->>>>>>> Stashed changes
         """
         if portion is None:
             return
@@ -633,9 +630,7 @@ class FlareDataSet(object):
             
             flipped_data = [self.train_data[i][::-1] for i in flip_ind]
             flipped_data_val = [self.val_data[i][::-1] for i in flip_ind_val]
-            
-            flipped_labels = np.zeros(len(flipped_data))
-            flipped_labels_val = np.zeros(len(flipped_data_val))
+        
             
             self._add_flipped_data(flip_ind, flip_ind_val, flipped_data, flipped_data_val)
 
@@ -648,27 +643,7 @@ class FlareDataSet(object):
             flipped_data_val = np.array([-self.val_data[i] for i in flip_ind_val])
             
             self._add_flipped_data(flip_ind, flip_ind_val, flipped_data, flipped_data_val)
-            # Concatenate data, labels, and original labels
-            self.train_data = np.concatenate((self.train_data, flipped_data), axis=0)
-            self.train_labels = np.concatenate((self.train_labels, flipped_labels), axis=0)
-            self.train_labels_ori = np.concatenate(
-                (self.train_labels_ori, flipped_labels_ori), axis=0
-            )
-
-            self.val_data = np.concatenate((self.val_data, flipped_data_val), axis=0)
-            self.val_labels = np.concatenate((self.val_labels, flipped_labels_val), axis=0)
-            self.val_labels_ori = np.concatenate(
-                (self.val_labels_ori, flipped_labels_ori_val), axis=0
-            )
-
-            # Use the correct IDs from training and validation sets
-            flipped_train_ids = self.train_ids[flip_ind]
-            self.train_ids = np.concatenate((self.train_ids, flipped_train_ids), axis=0)
-
-            flipped_val_ids = self.val_ids[flip_ind_val]
-            self.val_ids = np.concatenate((self.val_ids, flipped_val_ids), axis=0)
-            self.val_tpeaks = np.concatenate((self.val_tpeaks, self.val_tpeaks[flip_ind_val]), axis=0)
-
+       
 
     def _add_flipped_data(self, flip_ind, flip_ind_val, flipped_data, flipped_data_val):
         flipped_labels = np.zeros(len(flipped_data))
