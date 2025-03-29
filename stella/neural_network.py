@@ -497,8 +497,8 @@ class ConvNN(object):
             # SAVES TABLE IS SAVE IS TRUE
             if save is True:
                 fmt_table = "_i{0:04d}_b{1}.txt".format(int(epochs), self.frac_balance)
-                hist_fmt = f"ensemble_{int(seed)}_histories" + fmt_table
-                pred_fmt = f"ensemble_{int(seed)}_predval" + fmt_table
+                hist_fmt = f"ensemble_{int(seed):04d}_histories" + fmt_table
+                pred_fmt = f"ensemble_{int(seed):04d}_predval" + fmt_table
 
                 table.write(os.path.join(self.output_dir, hist_fmt), format="ascii",overwrite=True)
                 val_table.write(
@@ -509,7 +509,7 @@ class ConvNN(object):
                 )
 
                 if pred_test is True:
-                    test_fmt = f"ensemble_predtest_{int(seed)}" + fmt_table
+                    test_fmt = f"ensemble_predtest_{int(seed):04d}" + fmt_table
                     test_table.write(
                         os.path.join(self.output_dir, test_fmt),
                         format="ascii",

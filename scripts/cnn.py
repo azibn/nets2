@@ -326,7 +326,7 @@ if __name__ == "__main__":
 
         
 
-    cnn_dir = os.path.join(os.getcwd(), 'cnn-models')
+    cnn_dir = os.path.join(os.getcwd(), 'cnn-models-es')
 
     if args.layers:
         import importlib.util

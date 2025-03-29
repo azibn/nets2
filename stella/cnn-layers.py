@@ -16,7 +16,7 @@ def create_model_layers(input_shape=(168, 1)):
     dilation2 = 2
     dilation3 = 4
     pool_size = 2
-    dropout = 0.2
+    dropout = 0.25
     l2val = 0.001
     activation = 'relu'
     
