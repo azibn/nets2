@@ -274,7 +274,8 @@ if __name__ == "__main__":
     # datasets = [dataset]
     if args.load_dataset:
         with open(args.load_dataset, "rb") as file:
-            dataset = pickle.load(file)
+            ds = pickle.load(file)
+            dataset = ds['dataset']
     
     else:
         datasets = []
