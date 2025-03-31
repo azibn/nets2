@@ -136,11 +136,11 @@ group = parser.add_mutually_exclusive_group()
 group.add_argument(
     "-ld",
     "--load-data",
-    help="Load a pre-defined dataset. Dataset must be in .pkl format.",
-    action="store_true",
-    dest="load_dataset",
+    help="Load a pre-defined dataset. Dataset must be in .pkl format. If no filename specified, uses ds.pkl",
+    nargs='?', 
+    const="ds.pkl", 
+    dest="load_dataset"
 )
-
 
 args = parser.parse_args()
 
@@ -273,7 +273,7 @@ if __name__ == "__main__":
 
     # datasets = [dataset]
     if args.load_dataset:
-        with open("ds.pkl", "rb") as file:
+        with open(args.load_dataset, "rb") as file:
             dataset = pickle.load(file)
     
     else:
