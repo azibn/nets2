@@ -1,10 +1,10 @@
 """
-Custom CNN/RNN hybrid architecture that can be read in to `cnn.py`. 
+Custom CNN/RNN hybrid architecture that can be read in to `cnn.py`. Any layers should be defined as a `create_model_layers` function.
 """
 
 import tensorflow as tf
 
-def create_rnn_model(cadences=168, learning_rate=0.001):
+def create_model_layers(cadences=168, learning_rate=0.001):
     """
     Creates a hybrid CNN-LSTM model for exocomet detection.
     
