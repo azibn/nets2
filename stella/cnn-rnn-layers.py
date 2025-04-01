@@ -1,27 +1,20 @@
-"""
-Custom CNN/RNN hybrid architecture that can be read in to `cnn.py`. Any layers should be defined as a `create_model_layers` function.
-"""
-
 import tensorflow as tf
 
-def create_model_layers(cadences=168, learning_rate=0.001):
+def create_model_layers(input_shape=(168, 1)):
     """
-    Creates a hybrid CNN-LSTM model for exocomet detection.
+    Defines a hybrid CNN-LSTM model architecture for exocomet detection.
     
     Parameters:
     -----------
-    cadences : int
-        Number of time steps in each input sequence
-    learning_rate : float
-        Learning rate for the Adam optimizer
-        
+    input_shape : tuple
+        Shape of the input data (time steps, features)
+    
     Returns:
     --------
-    model : keras.Model
-        Compiled Keras model
+    layers : list
+        List of Keras layers composing the model
     """
     # Architecture parameters
-    # CNN parameters
     filters1 = 16
     filters2 = 64
     kernel_size1 = 7
@@ -40,15 +33,14 @@ def create_model_layers(cadences=168, learning_rate=0.001):
     # Activation function
     activation = 'relu'
     
-    # Create model
-    model = tf.keras.models.Sequential([
+    layers = [
         # Initial CNN layers for feature extraction
         tf.keras.layers.Conv1D(
             filters=filters1, 
             kernel_size=kernel_size1, 
             activation=activation, 
             padding="same",
-            input_shape=(cadences, 1),
+            input_shape=input_shape,
             kernel_regularizer=tf.keras.regularizers.l2(l2_reg)
         ),
         tf.keras.layers.MaxPooling1D(pool_size=pool_size),
@@ -82,23 +74,6 @@ def create_model_layers(cadences=168, learning_rate=0.001):
         
         # Output layer
         tf.keras.layers.Dense(1, activation="sigmoid")
-    ])
+    ]
     
-    optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
-    model.compile(
-        optimizer=optimizer,
-        loss="binary_crossentropy",
-        metrics=[
-            "accuracy",
-            tf.keras.metrics.AUC(),
-            tf.keras.metrics.Precision(),
-            tf.keras.metrics.Recall(),
-            tf.keras.metrics.F1Score(
-                threshold=0.5,
-                average='micro', 
-                dtype=tf.float32
-            )
-        ]
-    )
-    
-    return model
+    return layers
