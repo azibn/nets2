@@ -54,7 +54,7 @@ def create_model_layers(input_shape=(168, 1)):
             padding="same",
             kernel_regularizer=tf.keras.regularizers.l2(l2_reg)
         ),
-        tf.keras.layers.MaxPooling1D(pool_size=pool_size),
+        #tf.keras.layers.MaxPooling1D(pool_size=pool_size),
         tf.keras.layers.Dropout(dropout_cnn),
         
         # Add RNN layers
