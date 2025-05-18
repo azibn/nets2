@@ -110,6 +110,8 @@ def init_cnn(ds_path):
     with open(ds_path, "rb") as file:
         dataset = pickle.load(file)
         ds = dataset['dataset']
+        del dataset
+        gc.collect()
     cnn = stella.ConvNN(output_dir=f"/cnn-models/", ds=ds)
 
 
@@ -168,6 +170,65 @@ def process_lightcurve(path, pipeline):
         return None
 
 
+# def process_single_lightcurve(args):
+#     global cnn
+#     lc_path, pipeline, models, threshold = args
+    
+#     try:
+#         result = process_lightcurve(lc_path, pipeline)
+#         if result is None:
+#             return None
+            
+#         source_id, time, flux, flux_error, original_flux, original_time = result
+        
+#         # Pre-allocate array for predictions
+#         preds = np.zeros((len(models), len(time)))
+        
+#         for i, model in enumerate(models):
+#             try:
+#                 # Clear previous predictions
+#                 if hasattr(cnn, 'predictions'):
+#                     del cnn.predictions
+                    
+#                 cnn.predict(modelname=model, times=time, fluxes=flux, errs=flux_error)
+#                 preds[i] = cnn.predictions[0]
+                
+#                 # Force garbage collection after each model prediction
+#                 gc.collect()
+#                 del cnn.predictions
+#             except Exception as e:
+#                 print(f"Error with model {model}: {e}")
+#                 preds[i] = np.nan
+        
+#         # Find best prediction
+#         avg_pred = np.nanmedian(preds, axis=0)
+#         arg = np.argmax(avg_pred)
+#         pred = avg_pred[arg]
+#         t_pred = time[arg]  # Simplify this - no need to use cnn.predict_time
+#         is_interesting = 1 if pred > threshold else 0
+        
+#         # Include all data for every lightcurve
+#         results = {
+#             "ID": source_id,
+#             "t_pred": t_pred,
+#             "pred": pred,
+#             "is_interesting": is_interesting,
+#             "original_time": original_time,
+#             "original_flux": original_flux,
+#             "time": time,
+#             "flux": flux,
+#             "predictions": avg_pred
+#         }
+        
+#         # Explicit cleanup
+#         del time, flux, flux_error, preds, avg_pred, result
+#         gc.collect()
+        
+#         return results
+#     except Exception as e:
+#         print(f"Failed to process {lc_path}: {e}")
+#         return None
+
 def process_single_lightcurve(args):
     global cnn
     lc_path, pipeline, models, threshold = args
@@ -179,47 +240,55 @@ def process_single_lightcurve(args):
             
         source_id, time, flux, flux_error, original_flux, original_time = result
         
-        # Pre-allocate array for predictions
-        preds = np.zeros((len(models), len(time)))
-        
+        # Process one model at a time to reduce peak memory usage
+        all_preds = []
         for i, model in enumerate(models):
             try:
                 # Clear previous predictions
                 if hasattr(cnn, 'predictions'):
                     del cnn.predictions
                     
+                # Make prediction with current model
                 cnn.predict(modelname=model, times=time, fluxes=flux, errs=flux_error)
-                preds[i] = cnn.predictions[0]
                 
-                # Force garbage collection after each model prediction
+                # Store this model's predictions
+                all_preds.append(cnn.predictions[0])
+                
+                # Force garbage collection after each model
                 gc.collect()
-                del cnn.predictions
             except Exception as e:
                 print(f"Error with model {model}: {e}")
-                preds[i] = np.nan
+                all_preds.append(np.full(len(time), np.nan))
         
-        # Find best prediction
-        avg_pred = np.nanmedian(preds, axis=0)
+        # Calculate median predictions across models
+        # Using nanmedian to handle any NaN values from failed models
+        avg_pred = np.nanmedian(all_preds, axis=0)
+        
+        # Find maximum prediction
         arg = np.argmax(avg_pred)
         pred = avg_pred[arg]
-        t_pred = time[arg]  # Simplify this - no need to use cnn.predict_time
+        t_pred = time[arg]
         is_interesting = 1 if pred > threshold else 0
         
-        # Include all data for every lightcurve
+        # Create result dictionary with full arrays
+        # But convert to more memory-efficient data types where possible
         results = {
             "ID": source_id,
             "t_pred": t_pred,
             "pred": pred,
             "is_interesting": is_interesting,
-            "original_time": original_time,
-            "original_flux": original_flux,
             "time": time,
             "flux": flux,
-            "predictions": avg_pred
+            "predictions": avg_pred.astype(np.float32)  # Use float32 instead of float64
         }
         
-        # Explicit cleanup
-        del time, flux, flux_error, preds, avg_pred, result
+        # Original flux is only needed if you're plotting later
+        if is_interesting:
+            results["original_time"] = original_time
+            results["original_flux"] = original_flux
+        
+        # Explicit cleanup before returning
+        del time, flux, flux_error, all_preds, avg_pred, result
         gc.collect()
         
         return results
