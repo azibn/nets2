@@ -193,6 +193,7 @@ def process_single_lightcurve(args):
                 
                 # Force garbage collection after each model prediction
                 gc.collect()
+                del cnn.predictions
             except Exception as e:
                 print(f"Error with model {model}: {e}")
                 preds[i] = np.nan
@@ -239,50 +240,70 @@ def load_predictions(file_path):
     return data
 
 
+# 
+
 def main():
     start_time = time.time()
-
     pipeline = PIPELINE[args.p]
     models = find_models(args.model)
-
-    total_results = 0
-    pool = None  # Initialize pool variable outside try block
     
-    try:
-        with open(args.o, "ab") as f:
-            pool = multiprocessing.Pool(
+    # Collect all lightcurve paths first
+    print("Collecting lightcurve paths...")
+    all_lightcurves = list(load_lightcurves_generator(args.path))
+    total_files = len(all_lightcurves)
+    print(f"Found {total_files} lightcurves to process")
+    
+    # Set the batch size - adjust based on your memory constraints
+    batch_size = 100
+    total_batches = (total_files + batch_size - 1) // batch_size  # Ceiling division
+    
+    # Process in batches
+    total_results = 0
+    
+    with open(args.o, "ab") as output_file:
+        for batch_idx in range(total_batches):
+            # Calculate the start and end indices for this batch
+            start_idx = batch_idx * batch_size
+            end_idx = min(start_idx + batch_size, total_files)
+            
+            print(f"Processing batch {batch_idx + 1}/{total_batches} (files {start_idx} to {end_idx-1})")
+            
+            # Extract the batch of lightcurves to process
+            batch_lightcurves = all_lightcurves[start_idx:end_idx]
+            
+            # Create a fresh pool for this batch
+            with multiprocessing.Pool(
                 processes=args.threads,
                 initializer=init_cnn,
                 initargs=(args.ds,)
-            )
+            ) as pool:
+                # Create arguments for each lightcurve in the batch
+                batch_args = [(lc, pipeline, models, args.threshold) 
+                             for lc in batch_lightcurves]
+                
+                # Process the batch with a progress bar
+                batch_tqdm = tqdm(
+                    desc=f"Batch {batch_idx + 1}/{total_batches}",
+                    total=len(batch_lightcurves),
+                    unit=" lightcurves"
+                )
+                
+                # Process each lightcurve in the batch
+                for result in pool.imap_unordered(process_single_lightcurve, batch_args):
+                    if result is not None:
+                        pickle.dump(result, output_file)
+                        output_file.flush()
+                        total_results += 1
+                    batch_tqdm.update(1)
+                
+                batch_tqdm.close()
             
-            total_files = sum(1 for _ in load_lightcurves_generator(args.path))
-            lc_args = ((lc, pipeline, models, args.threshold) 
-                      for lc in load_lightcurves_generator(args.path))
-
-            tqdmbar = tqdm(desc="Processing lightcurves", 
-                         unit=" lightcurves",
-                         total=total_files)
+            # Explicitly clear memory after each batch
+            gc.collect()
             
-            for result in pool.imap_unordered(process_single_lightcurve, lc_args):
-                if result is None:
-                    continue
-                pickle.dump(result, f)
-                f.flush()
-                total_results += 1
-                tqdmbar.update(1)
-            
-            tqdmbar.close()
-
-    except KeyboardInterrupt:
-        print("Script interrupted by user. Exiting...")
-        if pool:
-            pool.terminate()
-    finally:
-        if pool:
-            pool.close()
-            pool.join()
-
+            # Optional: Add a brief pause between batches to let system recover
+            time.sleep(1)
+    
     print(f"Total results processed: {total_results}")
     end_time = time.time()
     elapsed_time = (end_time - start_time) / 60
@@ -293,17 +314,7 @@ if __name__ == "__main__":
         dataset = pickle.load(file)
         ds = dataset['dataset']
 
-    pr = cProfile.Profile()
-    pr.enable()
 
     main()
-
-    pr.disable()
-
-    s = io.StringIO()
-    sortby = 'cumulative'
-    ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
-    ps.print_stats()
-    print(s.getvalue())
 
     sys.exit(0)
