@@ -1,13 +1,10 @@
 # nets2 
 
-## exocomet models
-272-candidates-npy/
+## folders
+archive/
 data/
 models/
 catalogs/
-
-
-## folders
 datasets*
 predict-data*
 plots*

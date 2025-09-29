@@ -6,11 +6,11 @@ def create_model_with_params(cnn_instance, params):
 
     
     """Create model with specified parameters"""
-    filter1 = 64
-    filter2 = 128
+    filter1 = 16
+    filter2 = 64
     filter3 = 256
     kernel_size1 = 7
-    kernel_size2 = 7
+    kernel_size2 = 3
     kernel_size3 = 7
     dilation1 = 1
     dilation2 = 2
@@ -20,7 +20,6 @@ def create_model_with_params(cnn_instance, params):
         tf.keras.layers.Conv1D(
             filters=filter1,
             kernel_size=kernel_size1,
-            dilation_rate=dilation1,
             activation="relu",
             padding="same",
             input_shape=(cnn_instance.cadences, 1),
@@ -31,7 +30,6 @@ def create_model_with_params(cnn_instance, params):
         tf.keras.layers.Conv1D(
             filters=filter2,
             kernel_size=kernel_size2,
-            dilation_rate=dilation2,
             activation="relu",
             padding="same",
             kernel_regularizer=tf.keras.regularizers.l2(params['l2_lambda'])
@@ -39,22 +37,22 @@ def create_model_with_params(cnn_instance, params):
         tf.keras.layers.MaxPooling1D(pool_size=2),
         tf.keras.layers.Dropout(params['dropout']),
 
-        tf.keras.layers.Conv1D(
-            filters=filter3,
-            kernel_size=kernel_size3,
-            dilation_rate=dilation3,
-            activation="relu",
-            padding="same",
-            kernel_regularizer=tf.keras.regularizers.l2(params['l2_lambda'])
-        ),
-        tf.keras.layers.MaxPooling1D(pool_size=2),
-        tf.keras.layers.Dropout(params['dropout']),
-
-        tf.keras.layers.GlobalAveragePooling1D(),
-        # tf.keras.layers.Flatten(),
-        # tf.keras.layers.Dense(32, activation="relu", 
-        #                     kernel_regularizer=tf.keras.regularizers.l2(params['l2_lambda'])),
+        # tf.keras.layers.Conv1D(
+        #     filters=filter3,
+        #     kernel_size=kernel_size3,
+        #     dilation_rate=dilation3,
+        #     activation="relu",
+        #     padding="same",
+        #     kernel_regularizer=tf.keras.regularizers.l2(params['l2_lambda'])
+        # ),
+        # tf.keras.layers.MaxPooling1D(pool_size=2),
         # tf.keras.layers.Dropout(params['dropout']),
+
+        #tf.keras.layers.GlobalAveragePooling1D(),
+        tf.keras.layers.Flatten(),
+        tf.keras.layers.Dense(32, activation="relu", 
+                            kernel_regularizer=tf.keras.regularizers.l2(params['l2_lambda'])),
+        tf.keras.layers.Dropout(params['dropout']),
         tf.keras.layers.Dense(1, activation="sigmoid"),
     ])
 
@@ -118,7 +116,8 @@ def objective(trial, cnn_instance):
 
     return history.history["val_auc"][-1]
 
-def optimise_hyperparameters(cnn_instance, n_trials=100,name='cnn_optimisation.db'):
+def optimise_hyperparameters(cnn_instance, n_trials=100,name='cnn_optimisation.db',show_progress_bar=True):
+    """Optimise hyperparameters"""
     name = name
     storage = f"sqlite:///{name}" # must end with .db 
     study = optuna.create_study(
@@ -130,7 +129,7 @@ def optimise_hyperparameters(cnn_instance, n_trials=100,name='cnn_optimisation.d
     study.optimize(
         lambda trial: objective(trial, cnn_instance), 
         n_trials=n_trials,
-        n_jobs= int(multiprocessing.cpu_count()/2)
+        n_jobs= 4 #int(multiprocessing.cpu_count()/2)
     )
 
     print("Best trial:")

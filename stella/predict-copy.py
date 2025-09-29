@@ -14,12 +14,6 @@ import cProfile
 import pstats
 import io
 from memory_profiler import profile
-
-# Configure TensorFlow threading BEFORE importing stella/TensorFlow
-import tensorflow as tf
-tf.config.threading.set_inter_op_parallelism_threads(2)  # Limit parallelism between operations
-tf.config.threading.set_intra_op_parallelism_threads(8)  # Cores per process for matrix operations
-
 sys.path.insert(1, "scripts")
 sys.path.insert(1, "stella")
 import stella
@@ -27,16 +21,6 @@ import stella
 from utils import *
 
 os.nice(4)
-
-# config = tf.compat.v1.ConfigProto(
-#     intra_op_parallelism_threads=40,  # Parallelism within individual operations
-#     inter_op_parallelism_threads=2    # Parallelism between independent operations
-# )
-
-# # Create a session with the above configuration
-# session = tf.compat.v1.Session(config=config)
-# tf.compat.v1.keras.backend.set_session(session)
-
 
 parser = argparse.ArgumentParser(description="Predict CNN on lightcurve data")
 parser.add_argument(help="Target directory of lightcurves", dest="path")
@@ -76,8 +60,8 @@ parser.add_argument(
     "-t",
     "--threads",
     type=int,
-    help="Number of worker processes (not CPU cores). Each process uses multiple cores via TensorFlow. Recommended: 4-8 processes.",
-    default=6,
+    help="Number of threads to use",
+    default=20,
     dest="threads",
 )
 
@@ -113,12 +97,31 @@ PIPELINE = {
 def init_cnn(ds_path):
     """Initialise CNN once per worker process"""
     global cnn
-    with open(ds_path, "rb") as file:
-        dataset = pickle.load(file)
-        ds = dataset['dataset']
-        del dataset
+    try:
+        with open(ds_path, "rb") as file:
+            dataset = pickle.load(file)
+            ds = dataset['dataset']
+            del dataset
+            gc.collect()
+        
+        # Limit TensorFlow memory growth
+        import tensorflow as tf
+        gpus = tf.config.experimental.list_physical_devices('GPU')
+        if gpus:
+            try:
+                for gpu in gpus:
+                    tf.config.experimental.set_memory_growth(gpu, True)
+            except RuntimeError as e:
+                print(f"GPU memory config warning: {e}")
+        
+        cnn = stella.ConvNN(output_dir="cnn-models", ds=ds)
+        
+        # Clear any unnecessary references
+        del ds
         gc.collect()
-    cnn = stella.ConvNN(output_dir="cnn-models", ds=ds)
+    except Exception as e:
+        print(f"Error initializing CNN: {e}")
+        raise
 
 
 def load_lightcurves_generator(path):
@@ -189,65 +192,6 @@ def process_lightcurve(path, pipeline):
         return None
 
 
-# def process_single_lightcurve(args):
-#     global cnn
-#     lc_path, pipeline, models, threshold = args
-    
-#     try:
-#         result = process_lightcurve(lc_path, pipeline)
-#         if result is None:
-#             return None
-            
-#         source_id, time, flux, flux_error, original_flux, original_time = result
-        
-#         # Pre-allocate array for predictions
-#         preds = np.zeros((len(models), len(time)))
-        
-#         for i, model in enumerate(models):
-#             try:
-#                 # Clear previous predictions
-#                 if hasattr(cnn, 'predictions'):
-#                     del cnn.predictions
-                    
-#                 cnn.predict(modelname=model, times=time, fluxes=flux, errs=flux_error)
-#                 preds[i] = cnn.predictions[0]
-                
-#                 # Force garbage collection after each model prediction
-#                 gc.collect()
-#                 del cnn.predictions
-#             except Exception as e:
-#                 print(f"Error with model {model}: {e}")
-#                 preds[i] = np.nan
-        
-#         # Find best prediction
-#         avg_pred = np.nanmedian(preds, axis=0)
-#         arg = np.argmax(avg_pred)
-#         pred = avg_pred[arg]
-#         t_pred = time[arg]  # Simplify this - no need to use cnn.predict_time
-#         is_interesting = 1 if pred > threshold else 0
-        
-#         # Include all data for every lightcurve
-#         results = {
-#             "ID": source_id,
-#             "t_pred": t_pred,
-#             "pred": pred,
-#             "is_interesting": is_interesting,
-#             "original_time": original_time,
-#             "original_flux": original_flux,
-#             "time": time,
-#             "flux": flux,
-#             "predictions": avg_pred
-#         }
-        
-#         # Explicit cleanup
-#         del time, flux, flux_error, preds, avg_pred, result
-#         gc.collect()
-        
-#         return results
-#     except Exception as e:
-#         print(f"Failed to process {lc_path}: {e}")
-#         return None
-
 def process_single_lightcurve(args):
     global cnn
     lc_path, pipeline, models, threshold = args
@@ -263,24 +207,29 @@ def process_single_lightcurve(args):
         all_preds = []
         for i, model in enumerate(models):
             try:
-                # Clear previous predictions
+                # Clear previous predictions and force cleanup
                 if hasattr(cnn, 'predictions'):
                     del cnn.predictions
+                # Clear any other potential memory from previous runs
+                if hasattr(cnn, 'model'):
+                    # Force Keras to clear session memory
+                    import tensorflow as tf
+                    tf.keras.backend.clear_session()
                     
                 # Make prediction with current model
                 cnn.predict(modelname=model, times=time, fluxes=flux, errs=flux_error)
                 
-                # Store this model's predictions
-                all_preds.append(cnn.predictions[0])
+                # Store this model's predictions as float32 to save memory
+                all_preds.append(cnn.predictions[0].astype(np.float32))
                 
-                # Force garbage collection after each model
+                # Clean up immediately
+                del cnn.predictions
                 gc.collect()
             except Exception as e:
                 print(f"Error with model {model}: {e}")
-                all_preds.append(np.full(len(time), np.nan))
+                all_preds.append(np.full(len(time), np.nan, dtype=np.float32))
         
         # Calculate median predictions across models
-        # Using nanmedian to handle any NaN values from failed models
         avg_pred = np.nanmedian(all_preds, axis=0)
         
         # Find maximum prediction
@@ -289,25 +238,34 @@ def process_single_lightcurve(args):
         t_pred = time[arg]
         is_interesting = 1 if pred > threshold else 0
         
-        # Create result dictionary with full arrays
-        # But convert to more memory-efficient data types where possible
+        # Create minimal result dictionary - only store essential data
         results = {
             "ID": source_id,
-            "t_pred": t_pred,
-            "pred": pred,
+            "t_pred": float(t_pred),  # Convert to Python float to save memory
+            "pred": float(pred),
             "is_interesting": is_interesting,
-            "time": time,
-            "flux": flux,
-            "predictions": avg_pred.astype(np.float32)  # Use float32 instead of float64
         }
         
-        # Original flux is only needed if you're plotting later
+        # Only store full arrays for interesting lightcurves
         if is_interesting:
-            results["original_time"] = original_time
-            results["original_flux"] = original_flux
+            results["original_time"] = original_time.astype(np.float32)
+            results["original_flux"] = original_flux.astype(np.float32)
+            results["time"] = time.astype(np.float32)
+            results["flux"] = flux.astype(np.float32)
+            results["predictions"] = avg_pred.astype(np.float32)
+        else:
+            # For non-interesting lightcurves, only store a subset around the peak
+            window = 50  # Store ±50 points around the peak
+            start_idx = max(0, arg - window)
+            end_idx = min(len(time), arg + window + 1)
+            
+            results["time"] = time[start_idx:end_idx].astype(np.float32)
+            results["flux"] = flux[start_idx:end_idx].astype(np.float32)
+            results["predictions"] = avg_pred[start_idx:end_idx].astype(np.float32)
         
-        # Explicit cleanup before returning
+        # Aggressive cleanup before returning
         del time, flux, flux_error, all_preds, avg_pred, result
+        del original_time, original_flux
         gc.collect()
         
         return results
@@ -328,8 +286,6 @@ def load_predictions(file_path):
     return data
 
 
-# 
-
 def main():
     start_time = time.time()
     pipeline = PIPELINE[args.p]
@@ -340,29 +296,58 @@ def main():
     all_lightcurves = list(load_lightcurves_generator(args.path))
     total_files = len(all_lightcurves)
     print(f"Found {total_files} lightcurves to process")
-    cores_per_process = max(1, multiprocessing.cpu_count() // args.threads)
-    print(f"Using {args.threads} worker processes (each will use ~{cores_per_process} CPU cores via TensorFlow)")
     
-    # Process all lightcurves with a single pool (no batching needed)
+    # Set smaller batch size for better memory management
+    batch_size = 50  # Reduced from 100
+    total_batches = (total_files + batch_size - 1) // batch_size  # Ceiling division
+    
+    # Process in batches
     total_results = 0
     
-    with multiprocessing.Pool(
-        processes=args.threads,
-        initializer=init_cnn,
-        initargs=(args.ds,)
-    ) as pool:
-        # Create arguments for all lightcurves
-        all_args = [(lc, pipeline, models, args.threshold) for lc in all_lightcurves]
-        
-        # Process with smooth progress bar
-        with open(args.o, "wb") as output_file:
-            results = pool.imap_unordered(process_single_lightcurve, all_args)
+    with open(args.o, "ab") as output_file:
+        for batch_idx in range(total_batches):
+            # Calculate the start and end indices for this batch
+            start_idx = batch_idx * batch_size
+            end_idx = min(start_idx + batch_size, total_files)
             
-            for result in tqdm(results, total=total_files, desc="Processing lightcurves", unit=" files"):
-                if result is not None:
-                    pickle.dump(result, output_file)
-                    output_file.flush()  # Ensure data is written immediately
-                    total_results += 1
+            print(f"Processing batch {batch_idx + 1}/{total_batches} (files {start_idx} to {end_idx-1})")
+            
+            # Extract the batch of lightcurves to process
+            batch_lightcurves = all_lightcurves[start_idx:end_idx]
+            
+            # Create a fresh pool for this batch with reduced thread count for memory safety
+            effective_threads = min(args.threads, 30)  # Cap at 10 threads for memory safety
+            with multiprocessing.Pool(
+                processes=effective_threads,
+                initializer=init_cnn,
+                initargs=(args.ds,)
+            ) as pool:
+                # Create arguments for each lightcurve in the batch
+                batch_args = [(lc, pipeline, models, args.threshold) 
+                             for lc in batch_lightcurves]
+                
+                # Process the batch with a progress bar
+                batch_tqdm = tqdm(
+                    desc=f"Batch {batch_idx + 1}/{total_batches}",
+                    total=len(batch_lightcurves),
+                    unit=" lightcurves"
+                )
+                
+                # Process each lightcurve in the batch
+                for result in pool.imap_unordered(process_single_lightcurve, batch_args):
+                    if result is not None:
+                        pickle.dump(result, output_file)
+                        output_file.flush()
+                        total_results += 1
+                    batch_tqdm.update(1)
+                
+                batch_tqdm.close()
+            
+            # Explicitly clear memory after each batch
+            gc.collect()
+            
+            # Add a brief pause between batches to let system recover
+            time.sleep(2)
     
     print(f"Total results processed: {total_results}")
     end_time = time.time()
@@ -370,11 +355,5 @@ def main():
     print(f"Script executed in {elapsed_time:.2f} minutes")
 
 if __name__ == "__main__":
-    with open(args.ds, "rb") as file:
-        dataset = pickle.load(file)
-        ds = dataset['dataset']
-
-
     main()
-
     sys.exit(0)

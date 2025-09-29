@@ -48,6 +48,11 @@ class FlareDataSet(object):
         other_datasets_labels=None,
         num_subset=None,
         augment_portion=None,
+        save_global_context=False,      # NEW: Enable global context preservation
+        global_window_size=2000,        # NEW: RNN input size after downsampling
+        global_window_days=3.0,         # NEW: Days around event for global context
+        orbit_gap_threshold=0.5,        # NEW: TESS orbital gap detection (days)
+        global_downsampling=4           # NEW: Downsampling factor for global context
     ):
         """
         Loads in time, flux, flux error data. Reshapes
@@ -94,8 +99,17 @@ class FlareDataSet(object):
         augment_portion: float, optional
              Augments a portion of the positive class and assigns them as part of the negative class.
              Important if the shape is a characteristic (such as exocomets).
-
-
+        save_global_context: bool, optional
+             Whether to preserve full lightcurves for local+global RNN training.
+             Default is False (no additional storage).
+        global_window_size: int, optional
+             Size of global context after downsampling for RNN input. Default is 2000.
+        global_window_days: float, optional
+             Time span in days around each event for global context. Default is 3.0 days.
+        orbit_gap_threshold: float, optional
+             Gap size in days to split TESS orbits. Default is 0.5 days.
+        global_downsampling: int, optional
+             Downsampling factor for global context. Default is 4.
 
         """
         if fn_dir is not None:
@@ -115,7 +129,23 @@ class FlareDataSet(object):
 
         self.frac_balance = frac_balance
         self.num_subset = num_subset
+        
+        # NEW: Global context attributes (only initialized if enabled)
+        self.save_global_context = save_global_context
+        if save_global_context:
+            self.global_window_size = global_window_size
+            self.global_window_days = global_window_days
+            self.orbit_gap_threshold = orbit_gap_threshold
+            self.global_downsampling = global_downsampling
+            self.global_lightcurves = []
+            self.orbit_segments = []
+            self.window_to_global_map = None
+        
         self.load_files(time_offset=time_offset)
+
+        # NEW: Preserve global lightcurves before windowing (only if enabled)
+        if self.save_global_context:
+            self.preserve_global_lightcurves()
 
         self.reformat_data()
         self.original_labels = np.copy(self.labels)
@@ -422,6 +452,10 @@ class FlareDataSet(object):
         training_labels = np.zeros(ss, dtype=int)
         training_peaks = np.zeros(ss)
         training_ids = np.zeros(ss)
+        
+        # NEW: Track global mapping if enabled
+        if hasattr(self, 'save_global_context') and self.save_global_context:
+            training_global_idx = np.zeros(ss, dtype=int)
 
         x = 0
 
@@ -463,6 +497,13 @@ class FlareDataSet(object):
                             training_ids[x] = self.ids[i] + 0.0
                             training_matrix[x] = self.flux[i][flare_region]
                             training_labels[x] = 1
+                            
+                            # NEW: Map this window to its orbital segment if enabled
+                            if hasattr(self, 'save_global_context') and self.save_global_context:
+                                window_time = self.time[i][closest]
+                                global_idx = self._find_orbital_segment(i, window_time)
+                                training_global_idx[x] = global_idx
+                            
                             x += 1
 
                         except IndexError:
@@ -487,6 +528,12 @@ class FlareDataSet(object):
                     training_peaks[x] = nontime[j][int(self.cadences / 2)]
                     training_matrix[x] = nonflux[j]
                     training_labels[x] = 0
+                    
+                    # NEW: Map this window to its orbital segment if enabled
+                    if hasattr(self, 'save_global_context') and self.save_global_context:
+                        window_time = nontime[j][int(self.cadences / 2)]
+                        global_idx = self._find_orbital_segment(i, window_time)
+                        training_global_idx[x] = global_idx
 
                     x += 1
 
@@ -498,12 +545,16 @@ class FlareDataSet(object):
         labels = np.delete(training_labels, np.arange(x, ss, 1, dtype=int))
         training_peaks = np.delete(training_peaks, np.arange(x, ss, 1, dtype=int))
         training_ids = np.delete(training_ids, np.arange(x, ss, 1, dtype=int))
+        
+        # NEW: Also trim global mapping if enabled
+        if hasattr(self, 'save_global_context') and self.save_global_context:
+            training_global_idx = np.delete(training_global_idx, np.arange(x, ss, 1, dtype=int))
 
 
+        # Use original shuffle function (global context is reconstructed on-demand)
         ids, matrix, label, peaks = do_the_shuffle(
             training_matrix, labels, training_peaks, training_ids, self.frac_balance
         )
-
 
         self.labels = label
         self.original_labels = np.copy(label)
@@ -792,3 +843,154 @@ class FlareDataSet(object):
             print(f"  Validation: {val_prop:.3f} ({np.sum(y_val_ori == label)} samples)")
             print(f"  Difference: {abs(train_prop - val_prop):.3f}")
             print()
+
+    def preserve_global_lightcurves(self):
+        """
+        Save processed global lightcurves split by TESS orbits.
+        Each orbit becomes a separate global context segment.
+        """
+        print("Preserving global lightcurves with orbit splitting...")
+        
+        self.global_lightcurves = []
+        self.orbit_segments = []  # Track which orbit each global segment belongs to
+        
+        for i in range(len(self.time)):
+            # Extract arrays from object array
+            time = np.array(self.time[i], dtype=float)
+            flux = np.array(self.flux[i], dtype=float) 
+            flux_err = np.array(self.flux_err[i], dtype=float)
+            
+            # Clean data first
+            mask = ~np.isnan(time) & ~np.isnan(flux) & ~np.isnan(flux_err)
+            time_clean = time[mask]
+            flux_clean = flux[mask]
+            flux_err_clean = flux_err[mask]
+            
+            # Split into orbital segments
+            orbit_segments = self._split_by_orbits(time_clean, flux_clean, flux_err_clean)
+            
+            # Process each orbit separately
+            for orbit_idx, (orbit_time, orbit_flux, orbit_err) in enumerate(orbit_segments):
+                # Skip very short segments (< 200 cadences or < 0.2 days)
+                if len(orbit_time) < 200 or (orbit_time[-1] - orbit_time[0]) < 0.2:
+                    continue
+                    
+                # Normalize flux for this orbit
+                flux_normalized = orbit_flux / np.nanmedian(orbit_flux)
+                
+                # Find which transits fall in this orbit
+                orbit_tpeaks = []
+                for tpeak in self.tpeaks[i]:
+                    if orbit_time[0] <= tpeak <= orbit_time[-1]:
+                        orbit_tpeaks.append(tpeak)
+                
+                # Store global context for this orbit
+                global_lc = {
+                    'tic_id': self.ids[i],
+                    'orbit_idx': orbit_idx,
+                    'time': orbit_time,
+                    'flux': flux_normalized,
+                    'flux_err': orbit_err,
+                    'tpeaks': orbit_tpeaks,
+                    'time_span': (orbit_time[0], orbit_time[-1])
+                }
+                
+                self.global_lightcurves.append(global_lc)
+                self.orbit_segments.append((i, orbit_idx))  # (lightcurve_idx, orbit_idx)
+        
+        print(f"Preserved {len(self.global_lightcurves)} orbital segments from {len(self.time)} targets")
+        self._print_orbit_stats()
+
+    def _split_by_orbits(self, time, flux, flux_err, gap_threshold=None):
+        """
+        Split lightcurve by orbital gaps.
+        
+        Parameters
+        ----------
+        time, flux, flux_err : np.ndarray
+            Cleaned time series data
+        gap_threshold : float, optional
+            Gap size in days to split orbits. Uses self.orbit_gap_threshold if None.
+            
+        Returns
+        -------
+        segments : list
+            List of (time, flux, flux_err) tuples for each orbit
+        """
+        if gap_threshold is None:
+            gap_threshold = self.orbit_gap_threshold
+            
+        if len(time) == 0:
+            return []
+        
+        # Find gaps
+        time_diffs = np.diff(time)
+        gap_indices = np.where(time_diffs > gap_threshold)[0]
+        
+        # Split points (end of each orbit)
+        split_points = np.concatenate([[0], gap_indices + 1, [len(time)]])
+        
+        segments = []
+        for i in range(len(split_points) - 1):
+            start = split_points[i] 
+            end = split_points[i + 1]
+            
+            segment_time = time[start:end]
+            segment_flux = flux[start:end]
+            segment_err = flux_err[start:end]
+            
+            segments.append((segment_time, segment_flux, segment_err))
+        
+        return segments
+
+    def _print_orbit_stats(self):
+        """Print statistics about orbit segments."""
+        if not self.global_lightcurves:
+            return
+            
+        segment_lengths = [len(lc['time']) for lc in self.global_lightcurves]
+        segment_durations = [lc['time'][-1] - lc['time'][0] for lc in self.global_lightcurves]
+        
+        print(f"Orbit segment statistics:")
+        print(f"- Average length: {np.mean(segment_lengths):.0f} cadences")
+        print(f"- Average duration: {np.mean(segment_durations):.2f} days") 
+        print(f"- Min duration: {np.min(segment_durations):.2f} days")
+        print(f"- Max duration: {np.max(segment_durations):.2f} days")
+        
+        # Count segments per target
+        targets_with_segments = {}
+        for lc in self.global_lightcurves:
+            tic = lc['tic_id']
+            targets_with_segments[tic] = targets_with_segments.get(tic, 0) + 1
+        
+        avg_segments_per_target = np.mean(list(targets_with_segments.values()))
+        print(f"- Average orbits per target: {avg_segments_per_target:.1f}")
+
+    def _find_orbital_segment(self, lightcurve_idx, window_time):
+        """
+        Find which orbital segment contains the given window time.
+        
+        Parameters
+        ----------
+        lightcurve_idx : int
+            Index of the source lightcurve
+        window_time : float
+            Time at center of the window
+            
+        Returns
+        -------
+        global_idx : int
+            Index into self.global_lightcurves, or -1 if no match
+        """
+        for global_idx, global_lc in enumerate(self.global_lightcurves):
+            # Check if this global segment matches our lightcurve
+            if global_lc['tic_id'] != self.ids[lightcurve_idx]:
+                continue
+                
+            # Check if window time falls within this orbital segment
+            start_time, end_time = global_lc['time_span']
+            if start_time <= window_time <= end_time:
+                return global_idx
+        
+        # No matching orbital segment found
+        return -1

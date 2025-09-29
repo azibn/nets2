@@ -288,7 +288,7 @@ class ExocometFinder(object):
             Default is 0.5.
         max_gap : int, optional
             Maximum gap between indices to consider as same event.
-            Default is 20.
+            Default is 10.
         min_points : int, optional
             Minimum number of points required for a valid detection.
             Default is 5.
