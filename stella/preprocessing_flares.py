@@ -478,6 +478,16 @@ class FlareDataSet(object):
                 # DOESN'T LIKE FLARES AT THE VERY END OF THE LIGHT CURVE
                 # (AND NEITHER DO I)
                 if len(arg) > 0:
+
+                    ### NEW TEST; SHIFTING SOME OF THE POSITIVE SET
+                    #max_shift = self.cadences // 4  
+                    # offset = np.random.randint(-max_shift, max_shift + 1)  
+
+                    # closest = arg[np.argmin(np.abs(peak - self.time[i][arg]))]
+                    # start = int(closest - self.cadences / 2 + offset)
+                    # end = int(closest + self.cadences / 2 + offset)
+
+                    ### ORIGINAL
                     closest = arg[np.argmin(np.abs(peak - self.time[i][arg]))]
                     start = int(closest - self.cadences / 2)
                     end = int(closest + self.cadences / 2)
